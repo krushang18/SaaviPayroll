@@ -1,0 +1,6 @@
+backend/data/payrolls/
+backend/data/history.json
+__pycache__/
+*.pyc
+.DS_Store
+.env
