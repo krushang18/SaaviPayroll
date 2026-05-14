@@ -130,7 +130,11 @@ def _calc_record(emp: dict, fromDate: str, toDate: str,
     if present < 0:
         raise ValueError(f"{emp['name']}: presentDays cannot be negative")
 
-    diff = present - wd
+    # Months shorter than 30 days get free complementary days (salary is always /30)
+    comp_days = max(0, 30 - pd)
+    effective_present = present + comp_days
+
+    diff = effective_present - wd
     dayAdj = diff * daily
     basePay = emp["monthly"] + dayAdj
     otPay = extraHours * emp["hourly"]
@@ -148,8 +152,9 @@ def _calc_record(emp: dict, fromDate: str, toDate: str,
         "periodDays":   pd,
         "presentDays":  present,
         "absentDays":   absent,
+        "compDays":     comp_days,
         "extraHours":   extraHours,
-        # Computed
+        # Computed (diff uses effective present = present + compDays)
         "diff":         diff,
         "dayAdj":       dayAdj,
         "basePay":      basePay,
@@ -181,10 +186,12 @@ def _compute_payroll(payload: PayrollIn) -> dict:
         raise HTTPException(400, detail="; ".join(errors))
 
     total_pay = sum(r["total"] for r in records)
+    comp_days = max(0, 30 - _period_days(payload.fromDate, payload.toDate))
     return {
         "month":         payload.month,
         "fromDate":      payload.fromDate,
         "toDate":        payload.toDate,
+        "compDays":      comp_days,
         "employeeCount": len(records),
         "totalPay":      total_pay,
         "records":       records,

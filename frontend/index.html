@@ -799,7 +799,10 @@ function onBulkDatesChange() {
   const infoEl = document.getElementById('bPeriodInfo');
   if (from && to && from <= to) {
     const pd = periodDays(from, to);
-    infoEl.textContent = 'Period: ' + pd + ' day' + (pd === 1 ? '' : 's') + ' (' + fmtDate(from) + ' – ' + fmtDate(to) + ')';
+    const cd = Math.max(0, 30 - pd);
+    let txt = 'Period: ' + pd + ' day' + (pd === 1 ? '' : 's') + ' (' + fmtDate(from) + ' – ' + fmtDate(to) + ')';
+    if (cd > 0) txt += ' · +' + cd + ' complementary day' + (cd === 1 ? '' : 's');
+    infoEl.textContent = txt;
     infoEl.style.display = 'block';
   } else {
     infoEl.style.display = 'none';
@@ -858,10 +861,11 @@ function calcBulkRow(empId) {
     updateGrandTotal(); return;
   }
 
+  const compDays = Math.max(0, 30 - pd);
   const extraHours = hrEl.value !== '' ? parseFloat(hrEl.value) || 0 : 0;
   const dbtEl = document.getElementById('bdbt-' + empId);
   const debitAmount = dbtEl && dbtEl.value !== '' ? parseFloat(dbtEl.value) || 0 : 0;
-  const diff   = present - wd;
+  const diff   = (present + compDays) - wd;
   const dayAdj = diff * daily;
   const basePay = emp.monthly + dayAdj;
   const otPay  = extraHours * emp.hourly;
@@ -956,13 +960,16 @@ function renderPayrollHistory() {
     return;
   }
   const sorted = [...state.payrolls].sort((a, b) => b.month > a.month ? 1 : -1);
-  list.innerHTML = sorted.map(p => `
+  list.innerHTML = sorted.map(p => {
+    const cd = p.compDays || 0;
+    const compBadge = cd > 0 ? ` &nbsp;<span style="color:var(--accent);font-weight:500;">+${cd} comp. day${cd === 1 ? '' : 's'}</span>` : '';
+    return `
     <div class="month-card">
       <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;">
         <div>
           <div style="font-family:var(--serif);font-size:22px;font-weight:700;">${monthName(p.month)}</div>
           <div style="font-size:12px;color:var(--ink-3);margin-top:3px;">
-            ${fmtDate(p.fromDate)} – ${fmtDate(p.toDate)} &nbsp;·&nbsp; ${p.employeeCount} employees
+            ${fmtDate(p.fromDate)} – ${fmtDate(p.toDate)} &nbsp;·&nbsp; ${p.employeeCount} employees${compBadge}
           </div>
         </div>
         <div style="text-align:right;flex-shrink:0;">
@@ -975,7 +982,8 @@ function renderPayrollHistory() {
         <button class="btn btn-danger-out btn-sm" onclick="deletePayroll('${p.month}')">Delete</button>
       </div>
     </div>
-  `).join('');
+  `;
+  }).join('');
 }
 
 // ── Month Detail ──────────────────────────────────────────────────────────────
@@ -983,11 +991,13 @@ function showMonthDetail(month) {
   const payroll = state.payrolls.find(p => p.month === month);
   if (!payroll || !payroll.records) { toast('Payroll data not found.', 'error'); return; }
 
+  const detailCd = payroll.compDays || 0;
+  const detailCompNote = detailCd > 0 ? ` &nbsp;·&nbsp; <span style="color:var(--accent);font-weight:500;">+${detailCd} complementary day${detailCd === 1 ? '' : 's'}</span>` : '';
   document.getElementById('monthDetailContent').innerHTML = `
     <div style="margin-bottom:16px;">
       <div style="font-family:var(--serif);font-size:26px;font-weight:700;">${monthName(payroll.month)} Payroll</div>
       <div style="font-size:13px;color:var(--ink-3);margin-top:4px;">
-        ${fmtDate(payroll.fromDate)} – ${fmtDate(payroll.toDate)} &nbsp;·&nbsp; ${payroll.employeeCount} employees
+        ${fmtDate(payroll.fromDate)} – ${fmtDate(payroll.toDate)} &nbsp;·&nbsp; ${payroll.employeeCount} employees${detailCompNote}
       </div>
     </div>
     <div class="table-wrap">
@@ -1038,11 +1048,13 @@ function editMonthDetail(month) {
   const payroll = state.payrolls.find(p => p.month === month);
   if (!payroll || !payroll.records) return;
 
+  const editCd = payroll.compDays || 0;
+  const editCompNote = editCd > 0 ? ` &nbsp;·&nbsp; <span style="color:var(--accent);font-weight:500;">+${editCd} comp. day${editCd === 1 ? '' : 's'}</span>` : '';
   document.getElementById('monthDetailContent').innerHTML = `
     <div style="margin-bottom:16px;">
       <div style="font-family:var(--serif);font-size:26px;font-weight:700;">${monthName(payroll.month)} Payroll</div>
       <div style="font-size:13px;color:var(--ink-3);margin-top:4px;">
-        ${fmtDate(payroll.fromDate)} – ${fmtDate(payroll.toDate)} &nbsp;·&nbsp; Editing ${payroll.employeeCount} employees
+        ${fmtDate(payroll.fromDate)} – ${fmtDate(payroll.toDate)} &nbsp;·&nbsp; Editing ${payroll.employeeCount} employees${editCompNote}
       </div>
     </div>
     <div class="table-wrap">
@@ -1097,7 +1109,8 @@ function calcEditRow(empId, month) {
   const debit      = parseFloat(document.getElementById('edbt-' + empId)?.value) || 0;
 
   // Use snapshotted rates so editing attendance never alters historical rates
-  const diff    = present - rec.workingDays;
+  const compDays = rec.compDays || 0;
+  const diff    = (present + compDays) - rec.workingDays;
   const dayAdj  = diff * rec.daily;
   const basePay = rec.monthly + dayAdj;
   const otPay   = extraHours * rec.hourly;

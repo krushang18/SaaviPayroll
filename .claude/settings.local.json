@@ -1,0 +1,8 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(mkdir -p /Users/krushangshah/Desktop/PayRoll_Saavi/backend/data)",
+      "Bash(mkdir -p /Users/krushangshah/Desktop/PayRoll_Saavi/frontend)"
+    ]
+  }
+}
