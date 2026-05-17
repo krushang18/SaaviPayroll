@@ -1,5 +1,6 @@
-backend/data/payrolls/
-backend/data/history.json
+backend/data/
+backend/saavi_payroll.db
+backend/uv.lock
 __pycache__/
 *.pyc
 .DS_Store

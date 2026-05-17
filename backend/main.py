@@ -1,11 +1,153 @@
-from fastapi import FastAPI, HTTPException
-from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel
-from typing import Optional, List
-import json, os, math, uuid
+from contextlib import asynccontextmanager
 from datetime import datetime, date
+from typing import Optional, List
+import math, os
 
-app = FastAPI(title="Saavi Payroll API", version="2.0.0")
+from fastapi import FastAPI, HTTPException, Depends
+from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel, Field, field_validator, model_validator
+
+from sqlalchemy import create_engine, Column, String, Float, Integer, Index, text
+from sqlalchemy.orm import declarative_base, sessionmaker, Session
+
+# ── Database ──────────────────────────────────────────────────────────────────
+_DB_URL = os.getenv("DATABASE_URL", "sqlite:///./saavi_payroll.db")
+# Render issues the legacy postgres:// scheme; SQLAlchemy requires postgresql://
+if _DB_URL.startswith("postgres://"):
+    _DB_URL = _DB_URL.replace("postgres://", "postgresql://", 1)
+
+engine = create_engine(
+    _DB_URL,
+    connect_args={"check_same_thread": False} if _DB_URL.startswith("sqlite") else {},
+)
+SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+Base = declarative_base()
+
+
+# ── ORM Models ────────────────────────────────────────────────────────────────
+class CategoryRow(Base):
+    __tablename__ = "categories"
+    id         = Column(Integer, primary_key=True, autoincrement=True)
+    name       = Column(String,  nullable=False, unique=True)
+    night_base = Column(Float,   default=0)
+    night_appr = Column(Float,   default=0)
+
+
+class EmployeeRow(Base):
+    __tablename__ = "employees"
+    id           = Column(String,  primary_key=True)
+    name         = Column(String,  nullable=False)
+    monthly      = Column(Float,   nullable=False)
+    hourly       = Column(Float,   nullable=False)
+    working_days = Column(Integer, default=30)
+    category     = Column(String,  nullable=True)
+
+
+class PayrollRow(Base):
+    __tablename__ = "payrolls"
+    month          = Column(String, primary_key=True)
+    from_date      = Column(String, nullable=False)
+    to_date        = Column(String, nullable=False)
+    comp_days      = Column(Integer, default=0)
+    employee_count = Column(Integer, default=0)
+    total_pay      = Column(Float,   default=0.0)
+    saved_at       = Column(String)
+
+
+class PayrollRecordRow(Base):
+    __tablename__  = "payroll_records"
+    __table_args__ = (Index("ix_pr_month", "payroll_month"),)
+    id            = Column(Integer, primary_key=True, autoincrement=True)
+    payroll_month = Column(String, nullable=False)
+    emp_id        = Column(String, nullable=False)
+    emp_name      = Column(String)
+    monthly       = Column(Float)
+    daily         = Column(Float)
+    hourly        = Column(Float)
+    working_days  = Column(Integer)
+    period_days   = Column(Integer)
+    present_days  = Column(Float)
+    absent_days   = Column(Float)
+    comp_days     = Column(Integer)
+    extra_hours   = Column(Float)
+    diff          = Column(Float)
+    day_adj       = Column(Float)
+    base_pay      = Column(Float)
+    ot_pay        = Column(Float)
+    debit_amount  = Column(Float)
+    debit_hours   = Column(Float, default=0)
+    debit_hrs_pay = Column(Float, default=0)
+    night_shifts  = Column(Float, default=0)
+    night_base    = Column(Float, default=0)
+    night_appr    = Column(Float, default=0)
+    night_pay     = Column(Float, default=0)
+    total         = Column(Float)
+
+
+# ── Seed data (mirrors current employees.json) ────────────────────────────────
+_SEED_EMPLOYEES = [
+    {"id": "4",    "name": "Sejal",               "monthly": 19360, "hourly": 92,  "workingDays": 27},
+    {"id": "42",   "name": "Sarla",               "monthly": 20640, "hourly": 52,  "workingDays": 27},
+    {"id": "53",   "name": "Rekha",               "monthly": 12000, "hourly": 67,  "workingDays": 30},
+    {"id": "76",   "name": "Jayshri",             "monthly": 14300, "hourly": 79,  "workingDays": 27},
+    {"id": "77",   "name": "Payal",               "monthly": 18150, "hourly": 60,  "workingDays": 27},
+    {"id": "84",   "name": "Nanda (N)",           "monthly": 14000, "hourly": 38,  "workingDays": 27},
+    {"id": "87",   "name": "Nanda (D)",           "monthly": 8900,  "hourly": 49,  "workingDays": 27},
+    {"id": "96",   "name": "Gangamasi",           "monthly": 11500, "hourly": 48,  "workingDays": 27},
+    {"id": "98",   "name": "Koki (D)",            "monthly": 5950,  "hourly": 50,  "workingDays": 28},
+    {"id": "102",  "name": "Kankuben",            "monthly": 10650, "hourly": 29,  "workingDays": 30},
+    {"id": "107",  "name": "Binaben",             "monthly": 17500, "hourly": 41,  "workingDays": 30},
+    {"id": "107B", "name": "Dimple",              "monthly": 12650, "hourly": 52,  "workingDays": 28},
+    {"id": "122",  "name": "Subhdra",             "monthly": 13500, "hourly": 64,  "workingDays": 28},
+    {"id": "116",  "name": "Neelam (Old)",        "monthly": 13130, "hourly": 62,  "workingDays": 28},
+    {"id": "117",  "name": "Maharani (Dakhuben)", "monthly": 9000,  "hourly": 0,   "workingDays": 30},
+    {"id": "118",  "name": "Khushbu didi",        "monthly": 6800,  "hourly": 0,   "workingDays": 30},
+    {"id": "119",  "name": "Amrutbhai (D)",       "monthly": 13200, "hourly": 200, "workingDays": 29},
+    {"id": "119B", "name": "Amrutbhai (N)",       "monthly": 12100, "hourly": 33,  "workingDays": 29},
+    {"id": "125",  "name": "Harjilal",            "monthly": 11000, "hourly": 0,   "workingDays": 30},
+    {"id": "126",  "name": "Sunita",              "monthly": 9350,  "hourly": 51,  "workingDays": 30},
+]
+
+
+# ── Lifespan ──────────────────────────────────────────────────────────────────
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    Base.metadata.create_all(bind=engine)
+    with engine.connect() as conn:
+        for sql in [
+            "ALTER TABLE payroll_records ADD COLUMN debit_hours REAL DEFAULT 0",
+            "ALTER TABLE payroll_records ADD COLUMN debit_hrs_pay REAL DEFAULT 0",
+            "ALTER TABLE employees ADD COLUMN category TEXT DEFAULT NULL",
+            "ALTER TABLE payroll_records ADD COLUMN night_shifts REAL DEFAULT 0",
+            "ALTER TABLE payroll_records ADD COLUMN night_base REAL DEFAULT 0",
+            "ALTER TABLE payroll_records ADD COLUMN night_appr REAL DEFAULT 0",
+            "ALTER TABLE payroll_records ADD COLUMN night_pay REAL DEFAULT 0",
+        ]:
+            try:
+                conn.execute(text(sql))
+                conn.commit()
+            except Exception:
+                pass
+    db = SessionLocal()
+    try:
+        if db.query(EmployeeRow).count() == 0:
+            for e in _SEED_EMPLOYEES:
+                db.add(EmployeeRow(
+                    id=e["id"], name=e["name"], monthly=e["monthly"],
+                    hourly=e["hourly"], working_days=e["workingDays"],
+                ))
+            db.commit()
+        if db.query(CategoryRow).count() == 0:
+            db.add(CategoryRow(name="Aaya",   night_base=430, night_appr=100))
+            db.add(CategoryRow(name="Sister", night_base=650, night_appr=150))
+            db.commit()
+    finally:
+        db.close()
+    yield
+
+
+# ── App ───────────────────────────────────────────────────────────────────────
+app = FastAPI(title="Saavi Payroll API", version="3.0.0", lifespan=lifespan)
 
 CORS_ORIGINS = os.getenv("CORS_ORIGINS", "*").split(",")
 app.add_middleware(
@@ -16,76 +158,140 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-DATA_DIR = os.path.join(os.path.dirname(__file__), "data")
-EMP_FILE = os.path.join(DATA_DIR, "employees.json")
-PAYROLLS_DIR = os.path.join(DATA_DIR, "payrolls")
 
-os.makedirs(DATA_DIR, exist_ok=True)
-os.makedirs(PAYROLLS_DIR, exist_ok=True)
-
-
-def _read(path: str, default):
+def get_db():
+    db = SessionLocal()
     try:
-        with open(path) as f:
-            return json.load(f)
-    except (FileNotFoundError, json.JSONDecodeError):
-        return default
+        yield db
+    finally:
+        db.close()
 
 
-def _write(path: str, data) -> None:
-    with open(path, "w") as f:
-        json.dump(data, f, indent=2)
+# ── Serialisation helpers ─────────────────────────────────────────────────────
+def _emp_dict(row: EmployeeRow) -> dict:
+    return {
+        "id":          row.id,
+        "name":        row.name,
+        "monthly":     row.monthly,
+        "hourly":      row.hourly,
+        "workingDays": row.working_days,
+        "category":    row.category,
+    }
 
 
-# Seed real employees on first run
-if not os.path.exists(EMP_FILE):
-    _write(EMP_FILE, [
-        {"id": "4",    "name": "Sujal",                 "monthly": 9360,  "hourly": 52, "workingDays": 27},
-        {"id": "42",   "name": "Sarla (N)",              "monthly": 20640, "hourly": 64, "workingDays": 27},
-        {"id": "53",   "name": "Rekha Sis",              "monthly": 12000, "hourly": 79, "workingDays": 30},
-        {"id": "76",   "name": "Jayshri",                "monthly": 14100, "hourly": 79, "workingDays": 27},
-        {"id": "77",   "name": "Payal",                  "monthly": 18150, "hourly": 60, "workingDays": 27},
-        {"id": "84",   "name": "Nanda (N)",              "monthly": 14000, "hourly": 38, "workingDays": 27},
-        {"id": "87",   "name": "Nanda (D)",              "monthly": 8900,  "hourly": 49, "workingDays": 27},
-        {"id": "96",   "name": "Gangamasi 27",           "monthly": 11500, "hourly": 48, "workingDays": 28},
-        {"id": "98",   "name": "Koki (D)",               "monthly": 9750,  "hourly": 50, "workingDays": 28},
-        {"id": "102",  "name": "Kankuben",               "monthly": 10500, "hourly": 29, "workingDays": 30},
-        {"id": "107",  "name": "Binaben",                "monthly": 17500, "hourly": 48, "workingDays": 30},
-        {"id": "107B", "name": "Dimple",                 "monthly": 11500, "hourly": 58, "workingDays": 28},
-        {"id": "122",  "name": "Subhdra",                "monthly": 13500, "hourly": 64, "workingDays": 28},
-        {"id": "116",  "name": "Neelam (Old)",           "monthly": 13130, "hourly": 62, "workingDays": 28},
-        {"id": "117",  "name": "Maharani (Dakhuben)",    "monthly": 9000,  "hourly": 40, "workingDays": 30},
-        {"id": "118",  "name": "Khushbudi",              "monthly": 6800,  "hourly": 29, "workingDays": 30},
-        {"id": "119",  "name": "Amrutbhai (D)",          "monthly": 13200, "hourly": 40, "workingDays": 29},
-        {"id": "119B", "name": "Amrutbhai (N)",          "monthly": 12100, "hourly": 33, "workingDays": 21},
-        {"id": "125",  "name": "Harjilal",               "monthly": 11000, "hourly": 40, "workingDays": 30},
-        {"id": "126",  "name": "Sunita",                 "monthly": 9350,  "hourly": 51, "workingDays": 30},
-    ])
+def _emp_night_rates(row: EmployeeRow, db: Session):
+    if row.category:
+        cat = db.query(CategoryRow).filter(CategoryRow.name == row.category).first()
+        if cat:
+            return cat.night_base, cat.night_appr
+    return 0.0, 0.0
 
 
-# ── Models ───────────────────────────────────────────────────────────────────
+def _record_dict(row: PayrollRecordRow) -> dict:
+    return {
+        "empId":       row.emp_id,
+        "empName":     row.emp_name,
+        "monthly":     row.monthly,
+        "daily":       row.daily,
+        "hourly":      row.hourly,
+        "workingDays": row.working_days,
+        "periodDays":  row.period_days,
+        "presentDays": row.present_days,
+        "absentDays":  row.absent_days,
+        "compDays":    row.comp_days,
+        "extraHours":  row.extra_hours,
+        "diff":        row.diff,
+        "dayAdj":      row.day_adj,
+        "basePay":     row.base_pay,
+        "otPay":       row.ot_pay,
+        "debitAmount":  row.debit_amount,
+        "debitHours":   row.debit_hours or 0,
+        "debitHrsPay":  row.debit_hrs_pay or 0,
+        "nightShifts":  row.night_shifts or 0,
+        "nightBase":    row.night_base or 0,
+        "nightAppr":    row.night_appr or 0,
+        "nightPay":     row.night_pay or 0,
+        "total":        row.total,
+    }
 
+
+def _payroll_dict(p: PayrollRow, records) -> dict:
+    return {
+        "month":         p.month,
+        "fromDate":      p.from_date,
+        "toDate":        p.to_date,
+        "compDays":      p.comp_days,
+        "employeeCount": p.employee_count,
+        "totalPay":      p.total_pay,
+        "records":       [_record_dict(r) for r in records],
+        "savedAt":       p.saved_at,
+    }
+
+
+# ── Pydantic models ───────────────────────────────────────────────────────────
 class Employee(BaseModel):
-    id: str
-    name: str
-    monthly: float
-    hourly: float
-    workingDays: int = 30
+    id: str          = Field(min_length=1)
+    name: str        = Field(min_length=1)
+    monthly: float   = Field(ge=0)
+    hourly: float    = Field(ge=0)
+    workingDays: int = Field(default=30, ge=1, le=31)
+    category: str    = Field(min_length=1)
+
+    @field_validator('id', 'name', 'category', mode='before')
+    @classmethod
+    def _strip(cls, v):
+        return v.strip() if isinstance(v, str) else v
+
+    @field_validator('id', 'name', 'category')
+    @classmethod
+    def _non_empty(cls, v):
+        if not v:
+            raise ValueError('must not be empty')
+        return v
+
+
+class CategoryIn(BaseModel):
+    name: str        = Field(min_length=1)
+    nightBase: float = Field(default=0, ge=0)
+    nightAppr: float = Field(default=0, ge=0)
+
+    @field_validator('name', mode='before')
+    @classmethod
+    def _strip_name(cls, v):
+        return v.strip() if isinstance(v, str) else v
+
+    @field_validator('name')
+    @classmethod
+    def _non_empty_name(cls, v):
+        if not v:
+            raise ValueError('must not be empty')
+        return v
 
 
 class PayrollEntry(BaseModel):
     empId: str
     presentDays: Optional[float] = None
     absentDays: Optional[float] = None
-    extraHours: float = 0
-    debitAmount: float = 0
+    extraHours: float  = Field(default=0, ge=0)
+    debitHours: float  = Field(default=0, ge=0)
+    debitAmount: float = Field(default=0, ge=0)
+    nightShifts: float = Field(default=0, ge=0)
 
 
 class PayrollIn(BaseModel):
-    month: str       # "2026-04"
-    fromDate: str    # "2026-03-26"
-    toDate: str      # "2026-04-25"
-    entries: List[PayrollEntry]
+    month: str                          # "2026-04"
+    fromDate: str                       # "2026-03-26"
+    toDate: str                         # "2026-04-25"
+    entries: List[PayrollEntry] = Field(min_length=1)
+
+    @model_validator(mode='after')
+    def _check_dates(self):
+        if self.fromDate > self.toDate:
+            raise ValueError('fromDate must not be after toDate')
+        pd = _period_days(self.fromDate, self.toDate)
+        if pd < 28 or pd > 31:
+            raise ValueError(f'Pay period must be 28–31 days (got {pd})')
+        return self
 
 
 # ── Payroll logic (exact mirror of frontend computeSalary) ────────────────────
@@ -95,10 +301,7 @@ class PayrollIn(BaseModel):
 # dayAdj  = diff * daily
 # basePay = monthly + dayAdj
 # otPay   = extraHours * hourly
-# total   = basePay + otPay
-#
-# Employee rates (monthly, hourly, workingDays) are snapshotted at save time
-# so historical records remain unchanged when employee data is updated later.
+# total   = basePay + otPay - debitAmount
 
 def _period_days(from_date: str, to_date: str) -> int:
     d1 = date.fromisoformat(from_date)
@@ -108,7 +311,8 @@ def _period_days(from_date: str, to_date: str) -> int:
 
 def _calc_record(emp: dict, fromDate: str, toDate: str,
                  presentDays: Optional[float], absentDays: Optional[float],
-                 extraHours: float, debitAmount: float = 0) -> dict:
+                 extraHours: float, debitHours: float = 0, debitAmount: float = 0,
+                 nightShifts: float = 0, nightBase: float = 0, nightAppr: float = 0) -> dict:
     pd = _period_days(fromDate, toDate)
     daily = math.floor(emp["monthly"] / 30)
     wd = emp.get("workingDays", 30)
@@ -138,46 +342,52 @@ def _calc_record(emp: dict, fromDate: str, toDate: str,
     dayAdj = diff * daily
     basePay = emp["monthly"] + dayAdj
     otPay = extraHours * emp["hourly"]
-    total = basePay + otPay - debitAmount
+    debitHrsPay = debitHours * emp["hourly"]
+    nightPay = nightShifts * (nightBase + nightAppr)
+    total = basePay + otPay + nightPay - debitAmount - debitHrsPay
 
     return {
-        "empId":        emp["id"],
-        "empName":      emp["name"],
-        # Snapshot rates at save time — persists even if employee record changes later
-        "monthly":      emp["monthly"],
-        "daily":        daily,
-        "hourly":       emp["hourly"],
-        "workingDays":  wd,
-        # Attendance
-        "periodDays":   pd,
-        "presentDays":  present,
-        "absentDays":   absent,
-        "compDays":     comp_days,
-        "extraHours":   extraHours,
-        # Computed (diff uses effective present = present + compDays)
-        "diff":         diff,
-        "dayAdj":       dayAdj,
-        "basePay":      basePay,
-        "otPay":        otPay,
-        "debitAmount":  debitAmount,
-        "total":        total,
+        "empId":       emp["id"],
+        "empName":     emp["name"],
+        "monthly":     emp["monthly"],
+        "daily":       daily,
+        "hourly":      emp["hourly"],
+        "workingDays": wd,
+        "periodDays":  pd,
+        "presentDays": present,
+        "absentDays":  absent,
+        "compDays":    comp_days,
+        "extraHours":  extraHours,
+        "debitHours":  debitHours,
+        "debitHrsPay": debitHrsPay,
+        "nightShifts": nightShifts,
+        "nightBase":   nightBase,
+        "nightAppr":   nightAppr,
+        "nightPay":    nightPay,
+        "diff":        diff,
+        "dayAdj":      dayAdj,
+        "basePay":     basePay,
+        "otPay":       otPay,
+        "debitAmount": debitAmount,
+        "total":       total,
     }
 
 
-def _compute_payroll(payload: PayrollIn) -> dict:
-    emps = _read(EMP_FILE, [])
-    emp_map = {e["id"]: e for e in emps}
-
+def _compute_payroll(payload: PayrollIn, db: Session) -> dict:
     records = []
     errors = []
     for entry in payload.entries:
-        emp = emp_map.get(entry.empId)
-        if not emp:
+        row = db.query(EmployeeRow).filter(EmployeeRow.id == entry.empId).first()
+        if not row:
             errors.append(f"Employee {entry.empId} not found")
             continue
+        emp = _emp_dict(row)
+        night_base, night_appr = _emp_night_rates(row, db)
         try:
             rec = _calc_record(emp, payload.fromDate, payload.toDate,
-                               entry.presentDays, entry.absentDays, entry.extraHours, entry.debitAmount)
+                               entry.presentDays, entry.absentDays,
+                               entry.extraHours, entry.debitHours, entry.debitAmount,
+                               entry.nightShifts, night_base, night_appr)
             records.append(rec)
         except ValueError as e:
             errors.append(str(e))
@@ -185,7 +395,6 @@ def _compute_payroll(payload: PayrollIn) -> dict:
     if errors:
         raise HTTPException(400, detail="; ".join(errors))
 
-    total_pay = sum(r["total"] for r in records)
     comp_days = max(0, 30 - _period_days(payload.fromDate, payload.toDate))
     return {
         "month":         payload.month,
@@ -193,122 +402,244 @@ def _compute_payroll(payload: PayrollIn) -> dict:
         "toDate":        payload.toDate,
         "compDays":      comp_days,
         "employeeCount": len(records),
-        "totalPay":      total_pay,
+        "totalPay":      sum(r["total"] for r in records),
         "records":       records,
     }
 
 
-# ── Routes ────────────────────────────────────────────────────────────────────
+def _persist_records(result: dict, db: Session):
+    for rec in result["records"]:
+        db.add(PayrollRecordRow(
+            payroll_month=result["month"],
+            emp_id=rec["empId"],
+            emp_name=rec["empName"],
+            monthly=rec["monthly"],
+            daily=rec["daily"],
+            hourly=rec["hourly"],
+            working_days=rec["workingDays"],
+            period_days=rec["periodDays"],
+            present_days=rec["presentDays"],
+            absent_days=rec["absentDays"],
+            comp_days=rec["compDays"],
+            extra_hours=rec["extraHours"],
+            diff=rec["diff"],
+            day_adj=rec["dayAdj"],
+            base_pay=rec["basePay"],
+            ot_pay=rec["otPay"],
+            debit_amount=rec["debitAmount"],
+            debit_hours=rec["debitHours"],
+            debit_hrs_pay=rec["debitHrsPay"],
+            night_shifts=rec["nightShifts"],
+            night_base=rec["nightBase"],
+            night_appr=rec["nightAppr"],
+            night_pay=rec["nightPay"],
+            total=rec["total"],
+        ))
 
+
+# ── Routes ────────────────────────────────────────────────────────────────────
 @app.get("/")
 def health():
-    return {"status": "ok", "service": "Saavi Payroll API v2"}
+    return {"status": "ok", "service": "Saavi Payroll API v3"}
 
 
 # ── Employees ─────────────────────────────────────────────────────────────────
-
 @app.get("/employees")
-def list_employees():
-    return _read(EMP_FILE, [])
+def list_employees(db: Session = Depends(get_db)):
+    return [_emp_dict(e) for e in db.query(EmployeeRow).all()]
+
+
+def _assert_category_exists(category: str, db: Session):
+    if not db.query(CategoryRow).filter(CategoryRow.name == category).first():
+        raise HTTPException(400, detail=f"Category '{category}' does not exist")
 
 
 @app.post("/employees", status_code=201)
-def create_employee(emp: Employee):
-    emps = _read(EMP_FILE, [])
-    if any(e["id"] == emp.id for e in emps):
+def create_employee(emp: Employee, db: Session = Depends(get_db)):
+    if db.query(EmployeeRow).filter(EmployeeRow.id == emp.id).first():
         raise HTTPException(400, detail="Employee ID already exists")
-    emps.append(emp.model_dump())
-    _write(EMP_FILE, emps)
-    return emp.model_dump()
+    _assert_category_exists(emp.category, db)
+    row = EmployeeRow(id=emp.id, name=emp.name, monthly=emp.monthly,
+                      hourly=emp.hourly, working_days=emp.workingDays,
+                      category=emp.category)
+    db.add(row)
+    db.commit()
+    db.refresh(row)
+    return _emp_dict(row)
 
 
 @app.put("/employees/{emp_id}")
-def update_employee(emp_id: str, emp: Employee):
-    emps = _read(EMP_FILE, [])
-    idx = next((i for i, e in enumerate(emps) if e["id"] == emp_id), None)
-    if idx is None:
+def update_employee(emp_id: str, emp: Employee, db: Session = Depends(get_db)):
+    row = db.query(EmployeeRow).filter(EmployeeRow.id == emp_id).first()
+    if not row:
         raise HTTPException(404, detail="Employee not found")
-    emps[idx] = emp.model_dump()
-    _write(EMP_FILE, emps)
-    return emps[idx]
+    _assert_category_exists(emp.category, db)
+    row.name = emp.name
+    row.monthly = emp.monthly
+    row.hourly = emp.hourly
+    row.working_days = emp.workingDays
+    row.category = emp.category
+    db.commit()
+    db.refresh(row)
+    return _emp_dict(row)
 
 
 @app.delete("/employees/{emp_id}")
-def delete_employee(emp_id: str):
-    emps = _read(EMP_FILE, [])
-    if not any(e["id"] == emp_id for e in emps):
+def delete_employee(emp_id: str, db: Session = Depends(get_db)):
+    row = db.query(EmployeeRow).filter(EmployeeRow.id == emp_id).first()
+    if not row:
         raise HTTPException(404, detail="Employee not found")
-    _write(EMP_FILE, [e for e in emps if e["id"] != emp_id])
+    db.delete(row)
+    db.commit()
     return {"deleted": emp_id}
 
 
-# ── Payrolls (one JSON file per month in data/payrolls/) ─────────────────────
-
-def _payroll_path(month: str) -> str:
-    return os.path.join(PAYROLLS_DIR, f"{month}.json")
-
-
-def _list_payroll_months() -> list:
-    try:
-        return sorted(
-            [f[:-5] for f in os.listdir(PAYROLLS_DIR) if f.endswith(".json")],
-            reverse=True,
-        )
-    except FileNotFoundError:
-        return []
+# ── Categories ───────────────────────────────────────────────────────────────
+def _cat_dict(row: CategoryRow) -> dict:
+    return {"id": row.id, "name": row.name, "nightBase": row.night_base, "nightAppr": row.night_appr}
 
 
+@app.get("/categories")
+def list_categories(db: Session = Depends(get_db)):
+    return [_cat_dict(c) for c in db.query(CategoryRow).order_by(CategoryRow.name).all()]
+
+
+@app.post("/categories", status_code=201)
+def create_category(cat: CategoryIn, db: Session = Depends(get_db)):
+    if db.query(CategoryRow).filter(CategoryRow.name == cat.name).first():
+        raise HTTPException(409, detail="Category name already exists")
+    row = CategoryRow(name=cat.name, night_base=cat.nightBase, night_appr=cat.nightAppr)
+    db.add(row)
+    db.commit()
+    db.refresh(row)
+    return _cat_dict(row)
+
+
+@app.put("/categories/{cat_id}")
+def update_category(cat_id: int, cat: CategoryIn, db: Session = Depends(get_db)):
+    row = db.query(CategoryRow).filter(CategoryRow.id == cat_id).first()
+    if not row:
+        raise HTTPException(404, detail="Category not found")
+    existing = db.query(CategoryRow).filter(CategoryRow.name == cat.name, CategoryRow.id != cat_id).first()
+    if existing:
+        raise HTTPException(409, detail="Category name already exists")
+    row.name = cat.name
+    row.night_base = cat.nightBase
+    row.night_appr = cat.nightAppr
+    db.commit()
+    db.refresh(row)
+    return _cat_dict(row)
+
+
+@app.delete("/categories/{cat_id}")
+def delete_category(cat_id: int, db: Session = Depends(get_db)):
+    row = db.query(CategoryRow).filter(CategoryRow.id == cat_id).first()
+    if not row:
+        raise HTTPException(404, detail="Category not found")
+    in_use = db.query(EmployeeRow).filter(EmployeeRow.category == row.name).first()
+    if in_use:
+        raise HTTPException(400, detail=f"Category is assigned to employees — reassign them first")
+    db.delete(row)
+    db.commit()
+    return {"deleted": cat_id}
+
+
+# ── Payrolls ──────────────────────────────────────────────────────────────────
 @app.get("/payrolls")
-def list_payrolls():
-    """Returns full payroll objects (including records) for all saved months."""
+def list_payrolls(db: Session = Depends(get_db)):
+    payrolls = db.query(PayrollRow).order_by(PayrollRow.month.desc()).all()
     result = []
-    for month in _list_payroll_months():
-        data = _read(_payroll_path(month), None)
-        if data:
-            result.append(data)
+    for p in payrolls:
+        records = db.query(PayrollRecordRow).filter(
+            PayrollRecordRow.payroll_month == p.month
+        ).all()
+        result.append(_payroll_dict(p, records))
     return result
 
 
 @app.get("/payrolls/{month}")
-def get_payroll(month: str):
-    data = _read(_payroll_path(month), None)
-    if data is None:
+def get_payroll(month: str, db: Session = Depends(get_db)):
+    p = db.query(PayrollRow).filter(PayrollRow.month == month).first()
+    if not p:
         raise HTTPException(404, detail="Payroll not found")
-    return data
+    records = db.query(PayrollRecordRow).filter(
+        PayrollRecordRow.payroll_month == month
+    ).all()
+    return _payroll_dict(p, records)
 
 
 @app.post("/payrolls/preview")
-def preview_payroll(payload: PayrollIn):
-    """Calculate without saving — used for live preview."""
-    return _compute_payroll(payload)
+def preview_payroll(payload: PayrollIn, db: Session = Depends(get_db)):
+    return _compute_payroll(payload, db)
 
 
 @app.post("/payrolls", status_code=201)
-def save_payroll(payload: PayrollIn):
-    path = _payroll_path(payload.month)
-    if os.path.exists(path):
+def save_payroll(payload: PayrollIn, db: Session = Depends(get_db)):
+    if db.query(PayrollRow).filter(PayrollRow.month == payload.month).first():
         raise HTTPException(
             400,
-            detail=f"Payroll for {payload.month} already exists. Use PUT to overwrite."
+            detail=f"Payroll for {payload.month} already exists. Use PUT to overwrite.",
         )
-    result = _compute_payroll(payload)
-    result["savedAt"] = datetime.utcnow().isoformat()
-    _write(path, result)
-    return result
+    result = _compute_payroll(payload, db)
+    saved_at = datetime.utcnow().isoformat()
+    p = PayrollRow(
+        month=payload.month,
+        from_date=payload.fromDate,
+        to_date=payload.toDate,
+        comp_days=result["compDays"],
+        employee_count=result["employeeCount"],
+        total_pay=result["totalPay"],
+        saved_at=saved_at,
+    )
+    db.add(p)
+    _persist_records(result, db)
+    db.commit()
+    db.refresh(p)
+    records = db.query(PayrollRecordRow).filter(
+        PayrollRecordRow.payroll_month == payload.month
+    ).all()
+    return _payroll_dict(p, records)
 
 
 @app.put("/payrolls/{month}")
-def update_payroll(month: str, payload: PayrollIn):
-    result = _compute_payroll(payload)
-    result["savedAt"] = datetime.utcnow().isoformat()
-    _write(_payroll_path(month), result)
-    return result
+def update_payroll(month: str, payload: PayrollIn, db: Session = Depends(get_db)):
+    result = _compute_payroll(payload, db)
+    saved_at = datetime.utcnow().isoformat()
+    p = db.query(PayrollRow).filter(PayrollRow.month == month).first()
+    if p:
+        p.from_date = payload.fromDate
+        p.to_date = payload.toDate
+        p.comp_days = result["compDays"]
+        p.employee_count = result["employeeCount"]
+        p.total_pay = result["totalPay"]
+        p.saved_at = saved_at
+        db.query(PayrollRecordRow).filter(PayrollRecordRow.payroll_month == month).delete()
+    else:
+        p = PayrollRow(
+            month=month,
+            from_date=payload.fromDate,
+            to_date=payload.toDate,
+            comp_days=result["compDays"],
+            employee_count=result["employeeCount"],
+            total_pay=result["totalPay"],
+            saved_at=saved_at,
+        )
+        db.add(p)
+    _persist_records(result, db)
+    db.commit()
+    db.refresh(p)
+    records = db.query(PayrollRecordRow).filter(
+        PayrollRecordRow.payroll_month == month
+    ).all()
+    return _payroll_dict(p, records)
 
 
 @app.delete("/payrolls/{month}")
-def delete_payroll(month: str):
-    path = _payroll_path(month)
-    if not os.path.exists(path):
+def delete_payroll(month: str, db: Session = Depends(get_db)):
+    p = db.query(PayrollRow).filter(PayrollRow.month == month).first()
+    if not p:
         raise HTTPException(404, detail="Payroll not found")
-    os.remove(path)
+    db.query(PayrollRecordRow).filter(PayrollRecordRow.payroll_month == month).delete()
+    db.delete(p)
+    db.commit()
     return {"deleted": month}

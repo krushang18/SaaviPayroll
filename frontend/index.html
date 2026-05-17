@@ -52,7 +52,7 @@ header {
   box-shadow: var(--shadow-sm);
 }
 .header-inner {
-  max-width: 1100px; margin: 0 auto;
+  max-width: 1600px; margin: 0 auto;
   display: flex; align-items: center; justify-content: space-between;
   height: 56px; gap: 12px;
 }
@@ -84,7 +84,8 @@ header {
 .bnav-btn.active { color: var(--accent); }
 .bnav-icon { font-size: 18px; line-height: 1; }
 
-.app-body { max-width: 1100px; margin: 0 auto; padding: 24px 16px 96px; }
+.app-body { max-width: 1600px; margin: 0 auto; padding: 24px 16px 96px; }
+#view-employees, #view-profile, #view-history, #view-month-detail { max-width: 1100px; margin-left: auto; margin-right: auto; }
 
 .view { display: none; }
 .view.active { display: block; animation: fadeUp 0.22s ease; }
@@ -197,6 +198,9 @@ select {
 .btn:disabled { opacity: 0.4; pointer-events: none; }
 
 .table-wrap { overflow-x: auto; border-radius: var(--r); border: 1px solid var(--border); background: var(--surface); box-shadow: var(--shadow-sm); }
+.table-overlay-wrap { position: relative; }
+.table-overlay { display: none; position: absolute; inset: 0; z-index: 10; background: rgba(255,255,255,0.6); backdrop-filter: blur(3px); border-radius: var(--r); pointer-events: all; align-items: center; justify-content: center; }
+.table-overlay.active { display: flex; }
 table { width: 100%; border-collapse: collapse; min-width: 560px; }
 thead { background: var(--surface2); }
 th { padding: 11px 12px; text-align: left; font-size: 10px; letter-spacing: 1.5px; text-transform: uppercase; color: var(--ink-3); font-weight: 500; white-space: nowrap; }
@@ -341,7 +345,10 @@ hr.light { border: none; border-top: 1px solid var(--border); margin: 14px 0; }
   <div class="view active" id="view-employees">
     <div class="page-top">
       <div><div class="page-title">Employees</div><div class="page-sub">Your team at a glance</div></div>
-      <button class="btn btn-primary btn-sm" onclick="openAddModal()" style="flex-shrink:0;margin-top:4px;">+ Add</button>
+      <div style="display:flex;gap:8px;flex-shrink:0;margin-top:4px;">
+        <button class="btn btn-outline btn-sm" onclick="openCatModal()">Categories</button>
+        <button class="btn btn-primary btn-sm" onclick="openAddModal()">+ Add</button>
+      </div>
     </div>
     <div class="stat-row" id="statsRow"></div>
     <div class="search-wrap">
@@ -372,31 +379,46 @@ hr.light { border: none; border-top: 1px solid var(--border); margin: 14px 0; }
       <div id="bPeriodInfo" class="period-info" style="display:none"></div>
     </div>
 
-    <div class="table-wrap">
-      <table id="bulkTable" style="min-width:960px;">
-        <thead>
-          <tr>
-            <th>ID</th>
-            <th>Employee</th>
-            <th>Monthly</th>
-            <th>Per Hr</th>
-            <th>WD</th>
-            <th>Present</th>
-            <th>Absent</th>
-            <th>Ex. Hrs</th>
-            <th>Debit</th>
-            <th>Day Adj</th>
-            <th>Total</th>
-          </tr>
-        </thead>
-        <tbody id="bulkBody"></tbody>
-        <tfoot>
-          <tr>
-            <td colspan="10" style="text-align:right;font-size:11px;letter-spacing:1px;text-transform:uppercase;color:var(--ink-3);padding-right:16px;">Grand Total</td>
-            <td id="bGrandTotal" style="font-family:var(--num);font-size:15px;font-weight:700;color:var(--accent);">—</td>
-          </tr>
-        </tfoot>
-      </table>
+    <div id="existingPayrollBanner" style="display:none;align-items:center;gap:12px;padding:10px 14px;background:var(--accent-lt,#fff8e1);border:1px solid var(--accent);border-radius:var(--r);margin-bottom:10px;font-size:13px;">
+      <span style="flex:1;" id="existingPayrollMsg"></span>
+      <button class="btn btn-outline btn-sm" onclick="loadExistingPayroll()">Load</button>
+      <button class="btn btn-outline btn-sm" onclick="dismissExistingBanner()">Dismiss</button>
+    </div>
+
+    <div class="table-overlay-wrap">
+      <div class="table-overlay active" id="tableOverlay">
+        <span style="font-size:13px;color:var(--ink-3);font-weight:500;">Set a valid pay period (28–31 days) to enter attendance</span>
+      </div>
+      <div class="table-wrap">
+        <table id="bulkTable" style="min-width:1300px;">
+          <thead>
+            <tr>
+              <th style="width:36px;text-align:center;"><input type="checkbox" id="bSelectAll" checked onchange="toggleSelectAll(this.checked)" title="Select all"></th>
+              <th>ID</th>
+              <th>Employee</th>
+              <th>Monthly</th>
+              <th>Per Hr</th>
+              <th>WD</th>
+              <th>Present</th>
+              <th>Absent</th>
+              <th>Ex. Hrs</th>
+              <th>Night</th>
+              <th>Dbt Hrs</th>
+              <th>Debit</th>
+              <th>Day Adj</th>
+              <th>Debit Amt</th>
+              <th>Total</th>
+            </tr>
+          </thead>
+          <tbody id="bulkBody"></tbody>
+          <tfoot>
+            <tr>
+              <td colspan="14" style="text-align:right;font-size:11px;letter-spacing:1px;text-transform:uppercase;color:var(--ink-3);padding-right:16px;">Grand Total</td>
+              <td id="bGrandTotal" style="font-family:var(--num);font-size:15px;font-weight:700;color:var(--accent);">—</td>
+            </tr>
+          </tfoot>
+        </table>
+      </div>
     </div>
 
     <div style="height:14px"></div>
@@ -461,9 +483,52 @@ hr.light { border: none; border-top: 1px solid var(--border); margin: 14px 0; }
         <input type="number" id="fHourly" placeholder="50" min="0">
       </div>
     </div>
+    <div class="form-group" style="margin-top:4px;">
+      <label>Category</label>
+      <select id="fCategory" style="width:100%;padding:8px 10px;border:1px solid var(--border);border-radius:8px;font-size:14px;background:var(--surface);color:var(--ink);">
+        <option value="">— Select category —</option>
+      </select>
+    </div>
     <div class="modal-footer">
       <button class="btn btn-outline" onclick="closeModal()">Cancel</button>
       <button class="btn btn-primary" onclick="saveEmployee()">Save</button>
+    </div>
+  </div>
+</div>
+
+<!-- CATEGORY MODAL -->
+<div class="overlay" id="catModal">
+  <div class="modal" style="max-width:480px;">
+    <div class="modal-pill"></div>
+    <div class="modal-title">Manage Categories</div>
+    <div style="margin-bottom:12px;">
+      <div onclick="toggleCatList()" style="display:flex;align-items:center;justify-content:space-between;cursor:pointer;padding:6px 0;border-bottom:1px solid var(--border);">
+        <span style="font-size:13px;font-weight:600;letter-spacing:0.5px;text-transform:uppercase;color:var(--ink-2);">Existing Categories</span>
+        <span id="catListChevron" style="font-size:12px;color:var(--ink-3);transition:transform 0.2s;">▲</span>
+      </div>
+      <div id="catList" style="margin-top:4px;"></div>
+    </div>
+    <hr class="light">
+    <div class="modal-title" id="catFormTitle" style="font-size:14px;margin-bottom:10px;">Add Category</div>
+    <div class="form-grid" style="margin-bottom:10px;">
+      <div class="form-group">
+        <label>Name</label>
+        <input type="text" id="cName" placeholder="e.g. Ward Boy">
+      </div>
+    </div>
+    <div class="form-grid">
+      <div class="form-group">
+        <label>Night Base (₹)</label>
+        <input type="number" id="cBase" placeholder="430" min="0">
+      </div>
+      <div class="form-group">
+        <label>Appreciation (₹)</label>
+        <input type="number" id="cAppr" placeholder="100" min="0">
+      </div>
+    </div>
+    <div class="modal-footer" style="margin-top:10px;">
+      <button class="btn btn-outline" onclick="cancelCatEdit()">Cancel</button>
+      <button class="btn btn-primary" id="cSaveBtn" onclick="saveCategoryForm()">Add</button>
     </div>
   </div>
 </div>
@@ -492,7 +557,7 @@ const API_BASE = (
 ) ? 'http://localhost:8000' : '/api';
 
 // ── State ─────────────────────────────────────────────────────────────────────
-const state = { employees: [], payrolls: [] };
+const state = { employees: [], payrolls: [], categories: [] };
 
 // ── API helper ────────────────────────────────────────────────────────────────
 async function api(method, path, body) {
@@ -537,12 +602,14 @@ let currentView = 'employees';
 
 async function init() {
   try {
-    const [emps, payrolls] = await Promise.all([
+    const [emps, payrolls, categories] = await Promise.all([
       api('GET', '/employees'),
       api('GET', '/payrolls'),
+      api('GET', '/categories'),
     ]);
     state.employees = emps;
     state.payrolls = payrolls;
+    state.categories = categories;
   } catch(e) {
     toast('Could not reach server — is the backend running?', 'error');
   }
@@ -581,7 +648,7 @@ function renderEmployeeList() {
         <div class="avatar av${ci(e.name)}">${ini(e.name)}</div>
         <div class="emp-info-wrap" onclick="showProfile('${e.id}')">
           <div class="emp-name">${e.name}</div>
-          <div class="emp-id">ID: ${e.id} &nbsp;·&nbsp; ${e.workingDays} working days</div>
+          <div class="emp-id">ID: ${e.id} &nbsp;·&nbsp; ${e.workingDays} working days${e.category ? ' &nbsp;·&nbsp; <span style="color:var(--accent);font-weight:600;">' + e.category + '</span>' : ''}</div>
           <div class="emp-salary">${inr(e.monthly)} / month &nbsp;·&nbsp; ${inr(e.hourly)} / hr</div>
         </div>
         <div class="emp-actions">
@@ -677,12 +744,19 @@ function updateComputedDay() {
   el.textContent = (!isNaN(monthly) && monthly > 0) ? 'Per day (auto): ' + inr(Math.floor(monthly / 30)) : '';
 }
 
+function _populateCategorySelect(selectedValue) {
+  const sel = document.getElementById('fCategory');
+  sel.innerHTML = '<option value="">— None —</option>' +
+    state.categories.map(c => `<option value="${c.name}"${c.name === selectedValue ? ' selected' : ''}>${c.name}</option>`).join('');
+}
+
 function openAddModal() {
   editingId = null;
   document.getElementById('modalTitle').textContent = 'Add Employee';
   ['fId','fName','fMonthly','fWorkingDays','fHourly'].forEach(i => document.getElementById(i).value = '');
   document.getElementById('fId').disabled = false;
   document.getElementById('computedDay').textContent = '';
+  _populateCategorySelect('');
   document.getElementById('empModal').classList.add('open');
 }
 
@@ -695,6 +769,7 @@ function openEditModal(id) {
   document.getElementById('fMonthly').value = emp.monthly;
   document.getElementById('fWorkingDays').value = emp.workingDays || 30;
   document.getElementById('fHourly').value = emp.hourly;
+  _populateCategorySelect(emp.category || '');
   updateComputedDay();
   document.getElementById('empModal').classList.add('open');
 }
@@ -707,10 +782,12 @@ async function saveEmployee() {
   const monthly = parseFloat(document.getElementById('fMonthly').value);
   const workingDays = parseInt(document.getElementById('fWorkingDays').value);
   const hourly = parseFloat(document.getElementById('fHourly').value);
+  const category = document.getElementById('fCategory').value || null;
   if (!id || !name || isNaN(monthly) || isNaN(workingDays) || isNaN(hourly)) {
     toast('Please fill all fields.', 'error'); return;
   }
-  const empData = { id, name, monthly, workingDays, hourly };
+  if (!category) { toast('Please select a category.', 'error'); return; }
+  const empData = { id, name, monthly, workingDays, hourly, category };
   try {
     if (editingId) {
       const updated = await api('PUT', '/employees/' + editingId, empData);
@@ -725,6 +802,100 @@ async function saveEmployee() {
     toast(e.message, 'error'); return;
   }
   closeModal(); renderEmployeeList();
+}
+
+// ── Category Modal ─────────────────────────────────────────────────────────────
+let editingCatId = null;
+
+function openCatModal() {
+  editingCatId = null;
+  renderCatList();
+  ['cName','cBase','cAppr'].forEach(i => document.getElementById(i).value = '');
+  document.getElementById('catFormTitle').textContent = 'Add Category';
+  document.getElementById('cSaveBtn').textContent = 'Add';
+  document.getElementById('catModal').classList.add('open');
+}
+
+function closeCatModal() { document.getElementById('catModal').classList.remove('open'); }
+
+let catListOpen = true;
+
+function toggleCatList() {
+  catListOpen = !catListOpen;
+  document.getElementById('catList').style.display = catListOpen ? '' : 'none';
+  document.getElementById('catListChevron').textContent = catListOpen ? '▲' : '▼';
+}
+
+function renderCatList() {
+  const el = document.getElementById('catList');
+  el.style.display = catListOpen ? '' : 'none';
+  document.getElementById('catListChevron').textContent = catListOpen ? '▲' : '▼';
+  if (!state.categories.length) {
+    el.innerHTML = '<p style="font-size:13px;color:var(--ink-3);margin-top:8px;">No categories yet.</p>';
+    return;
+  }
+  el.innerHTML = state.categories.map(c => `
+    <div style="display:flex;align-items:center;gap:8px;padding:8px 0;border-bottom:1px solid var(--border);">
+      <div style="flex:1;">
+        <div style="font-weight:600;font-size:14px;">${c.name}</div>
+        <div style="font-size:12px;color:var(--ink-3);">Night: ${inr(c.nightBase)} base + ${inr(c.nightAppr)} appr. = ${inr(c.nightBase + c.nightAppr)}/shift</div>
+      </div>
+      <button class="icon-btn" onclick="editCat(${c.id})">Edit</button>
+      <button class="icon-btn danger" onclick="deleteCat(${c.id})">Del</button>
+    </div>
+  `).join('');
+}
+
+function editCat(id) {
+  const cat = state.categories.find(c => c.id === id); if (!cat) return;
+  editingCatId = id;
+  document.getElementById('cName').value = cat.name;
+  document.getElementById('cBase').value = cat.nightBase;
+  document.getElementById('cAppr').value = cat.nightAppr;
+  document.getElementById('catFormTitle').textContent = 'Edit Category';
+  document.getElementById('cSaveBtn').textContent = 'Save';
+}
+
+function cancelCatEdit() {
+  if (editingCatId === null) { closeCatModal(); return; }
+  editingCatId = null;
+  ['cName','cBase','cAppr'].forEach(i => document.getElementById(i).value = '');
+  document.getElementById('catFormTitle').textContent = 'Add Category';
+  document.getElementById('cSaveBtn').textContent = 'Add';
+}
+
+async function saveCategoryForm() {
+  const name = document.getElementById('cName').value.trim();
+  const nightBase = parseFloat(document.getElementById('cBase').value) || 0;
+  const nightAppr = parseFloat(document.getElementById('cAppr').value) || 0;
+  if (!name) { toast('Category name is required.', 'error'); return; }
+  try {
+    if (editingCatId) {
+      const updated = await api('PUT', '/categories/' + editingCatId, { name, nightBase, nightAppr });
+      state.categories = state.categories.map(c => c.id === editingCatId ? updated : c);
+      toast('Category updated.', 'success');
+    } else {
+      const created = await api('POST', '/categories', { name, nightBase, nightAppr });
+      state.categories.push(created);
+      toast('Category added.', 'success');
+    }
+    cancelCatEdit();
+    renderCatList();
+  } catch(e) {
+    toast(e.message, 'error');
+  }
+}
+
+async function deleteCat(id) {
+  const cat = state.categories.find(c => c.id === id); if (!cat) return;
+  try {
+    await api('DELETE', '/categories/' + id);
+    state.categories = state.categories.filter(c => c.id !== id);
+    toast(cat.name + ' deleted.', 'info');
+    renderCatList();
+  } catch(e) {
+    toast(e.message, 'error');
+  }
 }
 
 function openDeleteModal(id) {
@@ -749,6 +920,7 @@ async function confirmDelete() {
 
 document.getElementById('empModal').addEventListener('click', e => { if (e.target === e.currentTarget) closeModal(); });
 document.getElementById('deleteModal').addEventListener('click', e => { if (e.target === e.currentTarget) closeDeleteModal(); });
+document.getElementById('catModal').addEventListener('click', e => { if (e.target === e.currentTarget) closeCatModal(); });
 
 // ── Bulk Payroll Entry ────────────────────────────────────────────────────────
 let bulkInitialized = false;
@@ -776,6 +948,7 @@ function renderBulkTable() {
 
   tbody.innerHTML = state.employees.map(e => `
     <tr id="brow-${e.id}">
+      <td style="text-align:center;"><input type="checkbox" class="bRowCheck" id="bchk-${e.id}" checked onchange="updateGrandTotal()"></td>
       <td class="td-mono">${e.id}</td>
       <td style="white-space:nowrap;">
         <div style="font-family:var(--serif);font-size:14px;font-weight:600;">${e.name}</div>
@@ -783,11 +956,14 @@ function renderBulkTable() {
       <td class="td-mono">${inr(e.monthly)}</td>
       <td class="td-mono">${inr(e.hourly)}</td>
       <td class="td-mono">${e.workingDays}</td>
-      <td><input type="number" class="bulk-input" id="bpr-${e.id}" min="0" max="31" placeholder="—" oninput="calcBulkRow('${e.id}')"></td>
-      <td><input type="number" class="bulk-input" id="bab-${e.id}" min="0" max="31" placeholder="—" oninput="calcBulkRow('${e.id}')"></td>
+      <td><input type="number" class="bulk-input" id="bpr-${e.id}" min="0" max="31" placeholder="—" oninput="calcBulkRow('${e.id}','present')"></td>
+      <td><input type="number" class="bulk-input" id="bab-${e.id}" min="0" max="31" placeholder="—" oninput="calcBulkRow('${e.id}','absent')"></td>
       <td><input type="number" class="bulk-input" id="bhr-${e.id}" min="0" placeholder="0" oninput="calcBulkRow('${e.id}')"></td>
+      <td><input type="number" class="bulk-input" id="bns-${e.id}" min="0" placeholder="0" oninput="calcBulkRow('${e.id}')" style="border-color:rgba(100,100,200,0.4);"></td>
+      <td><input type="number" class="bulk-input" id="bdh-${e.id}" min="0" placeholder="0" oninput="calcBulkRow('${e.id}')" style="border-color:rgba(192,57,43,0.3);"></td>
       <td><input type="number" class="bulk-input" id="bdbt-${e.id}" min="0" placeholder="0" oninput="calcBulkRow('${e.id}')" style="border-color:rgba(192,57,43,0.3);"></td>
       <td id="badj-${e.id}" style="font-size:12px;font-weight:500;white-space:nowrap;">—</td>
+      <td id="bdbtamt-${e.id}" style="font-size:12px;font-weight:500;color:var(--danger);white-space:nowrap;">—</td>
       <td id="btot-${e.id}" style="font-family:var(--num);font-size:13px;font-weight:600;color:var(--accent);white-space:nowrap;">—</td>
     </tr>
   `).join('');
@@ -795,31 +971,62 @@ function renderBulkTable() {
 
 function onBulkDatesChange() {
   const from = document.getElementById('bCalcFrom').value;
-  const to = document.getElementById('bCalcTo').value;
-  const infoEl = document.getElementById('bPeriodInfo');
+  const to   = document.getElementById('bCalcTo').value;
+  const infoEl  = document.getElementById('bPeriodInfo');
+  const overlay = document.getElementById('tableOverlay');
+
   if (from && to && from <= to) {
     const pd = periodDays(from, to);
+    if (pd < 28 || pd > 31) {
+      infoEl.textContent = 'Period is ' + pd + ' days — must be between 28 and 31.';
+      infoEl.style.cssText = 'display:block;color:var(--danger);font-size:12px;margin-top:6px;';
+      overlay.classList.add('active');
+      dismissExistingBanner();
+      state.employees.forEach(e => calcBulkRow(e.id));
+      return;
+    }
+    // Valid period
+    overlay.classList.remove('active');
+    // Update present/absent max to exactly pd
+    state.employees.forEach(e => {
+      const prEl = document.getElementById('bpr-' + e.id);
+      const abEl = document.getElementById('bab-' + e.id);
+      if (prEl) prEl.max = pd;
+      if (abEl) abEl.max = pd;
+    });
     const cd = Math.max(0, 30 - pd);
     let txt = 'Period: ' + pd + ' day' + (pd === 1 ? '' : 's') + ' (' + fmtDate(from) + ' – ' + fmtDate(to) + ')';
     if (cd > 0) txt += ' · +' + cd + ' complementary day' + (cd === 1 ? '' : 's');
     infoEl.textContent = txt;
-    infoEl.style.display = 'block';
+    infoEl.style.cssText = 'display:block;';
+    // Check for existing payroll this month
+    const month = to.slice(0, 7);
+    const existing = state.payrolls.find(p => p.month === month);
+    if (existing) {
+      document.getElementById('existingPayrollMsg').textContent =
+        'Payroll for ' + monthName(month) + ' (' + fmtDate(existing.fromDate) + ' – ' + fmtDate(existing.toDate) + ') already exists.';
+      document.getElementById('existingPayrollBanner').style.display = 'flex';
+    } else {
+      dismissExistingBanner();
+    }
   } else {
     infoEl.style.display = 'none';
+    overlay.classList.add('active');
+    dismissExistingBanner();
   }
-  // Recalculate all rows since period changed
   state.employees.forEach(e => calcBulkRow(e.id));
 }
 
-function calcBulkRow(empId) {
+function calcBulkRow(empId, source) {
   const from = document.getElementById('bCalcFrom').value;
   const to = document.getElementById('bCalcTo').value;
-  const adjEl = document.getElementById('badj-' + empId);
-  const totEl = document.getElementById('btot-' + empId);
+  const adjEl    = document.getElementById('badj-'    + empId);
+  const dbtAmtEl = document.getElementById('bdbtamt-' + empId);
+  const totEl    = document.getElementById('btot-'    + empId);
   if (!adjEl || !totEl) return;
 
   if (!from || !to || from > to) {
-    adjEl.textContent = '—'; totEl.textContent = '—';
+    adjEl.textContent = '—'; if (dbtAmtEl) dbtAmtEl.textContent = '—'; totEl.textContent = '—';
     updateGrandTotal(); return;
   }
 
@@ -836,17 +1043,30 @@ function calcBulkRow(empId) {
   let present = prEl.value !== '' ? parseFloat(prEl.value) : NaN;
   let absent  = abEl.value !== '' ? parseFloat(abEl.value) : NaN;
 
-  // Auto-compute the missing field and show it as placeholder
-  if (!isNaN(present) && isNaN(absent)) {
-    abEl.placeholder = String(Math.max(0, pd - Math.floor(present)));
-  } else if (isNaN(present) && !isNaN(absent)) {
-    prEl.placeholder = String(Math.max(0, pd - Math.floor(absent)));
-  } else {
+  // When a source field is typed, auto-correct the other to always sum to pd
+  if (source === 'present' && !isNaN(present)) {
+    const v = Math.min(pd, Math.max(0, Math.floor(present)));
+    prEl.value = v; present = v;
+    abEl.value = pd - v; absent = pd - v;
     prEl.placeholder = '—'; abEl.placeholder = '—';
+  } else if (source === 'absent' && !isNaN(absent)) {
+    const v = Math.min(pd, Math.max(0, Math.floor(absent)));
+    abEl.value = v; absent = v;
+    prEl.value = pd - v; present = pd - v;
+    prEl.placeholder = '—'; abEl.placeholder = '—';
+  } else {
+    // No source — show auto-computed placeholder only
+    if (!isNaN(present) && isNaN(absent)) {
+      abEl.placeholder = String(Math.max(0, pd - Math.floor(present)));
+    } else if (isNaN(present) && !isNaN(absent)) {
+      prEl.placeholder = String(Math.max(0, pd - Math.floor(absent)));
+    } else {
+      prEl.placeholder = '—'; abEl.placeholder = '—';
+    }
   }
 
   if (isNaN(present) && isNaN(absent)) {
-    adjEl.textContent = '—'; totEl.textContent = '—';
+    adjEl.textContent = '—'; if (dbtAmtEl) dbtAmtEl.textContent = '—'; totEl.textContent = '—';
     updateGrandTotal(); return;
   }
 
@@ -857,22 +1077,32 @@ function calcBulkRow(empId) {
 
   if (present < 0) {
     adjEl.textContent = '!'; adjEl.className = 'adj-negative';
+    if (dbtAmtEl) dbtAmtEl.textContent = '!';
     totEl.textContent = '!';
     updateGrandTotal(); return;
   }
 
   const compDays = Math.max(0, 30 - pd);
   const extraHours = hrEl.value !== '' ? parseFloat(hrEl.value) || 0 : 0;
+  const nsEl = document.getElementById('bns-' + empId);
+  const nightShifts = nsEl && nsEl.value !== '' ? parseFloat(nsEl.value) || 0 : 0;
+  const dhEl = document.getElementById('bdh-' + empId);
+  const debitHours = dhEl && dhEl.value !== '' ? parseFloat(dhEl.value) || 0 : 0;
   const dbtEl = document.getElementById('bdbt-' + empId);
   const debitAmount = dbtEl && dbtEl.value !== '' ? parseFloat(dbtEl.value) || 0 : 0;
   const diff   = (present + compDays) - wd;
   const dayAdj = diff * daily;
   const basePay = emp.monthly + dayAdj;
   const otPay  = extraHours * emp.hourly;
-  const total  = basePay + otPay - debitAmount;
+  const cat = state.categories.find(c => c.name === emp.category);
+  const nightPay = nightShifts * ((cat ? cat.nightBase : 0) + (cat ? cat.nightAppr : 0));
+  const debitHrsPay = debitHours * emp.hourly;
+  const total  = basePay + otPay + nightPay - debitAmount - debitHrsPay;
 
   adjEl.textContent = (dayAdj >= 0 ? '+' : '') + inr(dayAdj);
   adjEl.className = dayAdj > 0 ? 'adj-positive' : dayAdj < 0 ? 'adj-negative' : '';
+  const totalDebit = debitAmount + debitHrsPay;
+  if (dbtAmtEl) dbtAmtEl.textContent = totalDebit > 0 ? '-' + inr(totalDebit) : '—';
   totEl.textContent = inr(total);
 
   updateGrandTotal();
@@ -881,6 +1111,8 @@ function calcBulkRow(empId) {
 function updateGrandTotal() {
   let sum = 0, count = 0;
   state.employees.forEach(emp => {
+    const cb = document.getElementById('bchk-' + emp.id);
+    if (!cb || !cb.checked) return;
     const el = document.getElementById('btot-' + emp.id);
     if (el && el.textContent !== '—' && el.textContent !== '!') {
       const v = parseFloat(el.textContent.replace(/[₹,]/g, ''));
@@ -900,9 +1132,12 @@ async function savePayroll() {
   const month = toDate.slice(0, 7);
 
   const entries = [];
-  const missing = [];
+  const errors  = [];
 
   for (const emp of state.employees) {
+    const cb = document.getElementById('bchk-' + emp.id);
+    if (!cb || !cb.checked) continue;   // skip unchecked employees
+
     const prEl = document.getElementById('bpr-' + emp.id);
     const abEl = document.getElementById('bab-' + emp.id);
     const hrEl = document.getElementById('bhr-' + emp.id);
@@ -910,24 +1145,28 @@ async function savePayroll() {
     const presentDays = prEl && prEl.value !== '' ? parseFloat(prEl.value) : null;
     const absentDays  = abEl && abEl.value !== '' ? parseFloat(abEl.value) : null;
     const extraHours  = hrEl && hrEl.value !== '' ? parseFloat(hrEl.value) || 0 : 0;
+    const nsEl = document.getElementById('bns-' + emp.id);
+    const nightShifts = nsEl && nsEl.value !== '' ? parseFloat(nsEl.value) || 0 : 0;
+    const dhEl = document.getElementById('bdh-' + emp.id);
+    const debitHours = dhEl && dhEl.value !== '' ? parseFloat(dhEl.value) || 0 : 0;
     const dbtEl = document.getElementById('bdbt-' + emp.id);
     const debitAmount = dbtEl && dbtEl.value !== '' ? parseFloat(dbtEl.value) || 0 : 0;
 
     if (presentDays === null && absentDays === null) {
-      missing.push(emp.name);
+      errors.push(emp.name);
       if (prEl) prEl.classList.add('missing');
       if (abEl) abEl.classList.add('missing');
     } else {
       if (prEl) prEl.classList.remove('missing');
       if (abEl) abEl.classList.remove('missing');
-      entries.push({ empId: emp.id, presentDays, absentDays, extraHours, debitAmount });
+      entries.push({ empId: emp.id, presentDays, absentDays, extraHours, nightShifts, debitHours, debitAmount });
     }
   }
 
-  if (entries.length === 0) { toast('Enter attendance for at least one employee.', 'error'); return; }
-  if (missing.length > 0) {
-    toast(missing.length + ' employee(s) have no attendance — they will be excluded.', 'info');
+  if (errors.length > 0) {
+    toast('Fill attendance for checked employees: ' + errors.join(', '), 'error'); return;
   }
+  if (entries.length === 0) { toast('Check and fill at least one employee.', 'error'); return; }
 
   const btn = document.getElementById('bSaveBtn');
   btn.disabled = true;
@@ -950,6 +1189,51 @@ async function savePayroll() {
   } finally {
     btn.disabled = false;
   }
+}
+
+function toggleSelectAll(checked) {
+  state.employees.forEach(e => {
+    const cb = document.getElementById('bchk-' + e.id);
+    if (cb) cb.checked = checked;
+  });
+  updateGrandTotal();
+}
+
+function dismissExistingBanner() {
+  document.getElementById('existingPayrollBanner').style.display = 'none';
+}
+
+function loadExistingPayroll() {
+  const month = document.getElementById('bCalcTo').value.slice(0, 7);
+  const payroll = state.payrolls.find(p => p.month === month);
+  if (!payroll || !payroll.records) return;
+  dismissExistingBanner();
+  // Uncheck all first
+  state.employees.forEach(e => {
+    const cb = document.getElementById('bchk-' + e.id);
+    if (cb) cb.checked = false;
+  });
+  // Fill each employee that has a record
+  payroll.records.forEach(r => {
+    const cb = document.getElementById('bchk-' + r.empId);
+    if (cb) cb.checked = true;
+    const set = (id, val) => { const el = document.getElementById(id); if (el !== null) el.value = (val != null ? val : ''); };
+    set('bpr-'  + r.empId, r.presentDays);
+    set('bab-'  + r.empId, r.absentDays);
+    set('bhr-'  + r.empId, r.extraHours  || 0);
+    set('bns-'  + r.empId, r.nightShifts || 0);
+    set('bdh-'  + r.empId, r.debitHours  || 0);
+    set('bdbt-' + r.empId, r.debitAmount || 0);
+    calcBulkRow(r.empId);
+  });
+  // Sync select-all checkbox state
+  const allChecked = state.employees.every(e => {
+    const cb = document.getElementById('bchk-' + e.id);
+    return cb && cb.checked;
+  });
+  const selectAll = document.getElementById('bSelectAll');
+  if (selectAll) selectAll.checked = allChecked;
+  toast('Loaded ' + monthName(month) + ' payroll — review and save changes.', 'info');
 }
 
 // ── History ───────────────────────────────────────────────────────────────────
@@ -1003,7 +1287,7 @@ function showMonthDetail(month) {
     <div class="table-wrap">
       <table style="min-width:820px;">
         <thead>
-          <tr><th>ID</th><th>Employee</th><th>Monthly</th><th>WD</th><th>Present</th><th>Absent</th><th>Hrs</th><th>Day Adj</th><th>OT</th><th>Debit</th><th>Total</th></tr>
+          <tr><th>ID</th><th>Employee</th><th>Monthly</th><th>WD</th><th>Present</th><th>Absent</th><th>Hrs</th><th>Night</th><th>Night Pay</th><th>Dbt Hrs</th><th>Day Adj</th><th>OT</th><th>Debit</th><th>Debit Amt</th><th>Total</th></tr>
         </thead>
         <tbody>
           ${payroll.records.map(r => `
@@ -1015,16 +1299,20 @@ function showMonthDetail(month) {
               <td>${r.presentDays}</td>
               <td>${r.absentDays}</td>
               <td>${r.extraHours || 0}</td>
+              <td>${r.nightShifts || 0}</td>
+              <td style="color:var(--accent);font-weight:500;">${(r.nightPay||0)>0?'+'+inr(r.nightPay):'—'}</td>
+              <td>${r.debitHours || 0}</td>
               <td class="${(r.dayAdj||0)>=0?'adj-positive':'adj-negative'}">${(r.dayAdj||0)>=0?'+':''}${inr(r.dayAdj||0)}</td>
               <td>${inr(r.otPay||0)}</td>
               <td style="color:var(--danger);font-weight:500;">${(r.debitAmount||0)>0?'-'+inr(r.debitAmount):'—'}</td>
+              <td style="color:var(--danger);font-weight:500;">${((r.debitAmount||0)+(r.debitHrsPay||0))>0?'-'+inr((r.debitAmount||0)+(r.debitHrsPay||0)):'—'}</td>
               <td class="td-green" style="font-weight:700;">${inr(r.total)}</td>
             </tr>
           `).join('')}
         </tbody>
         <tfoot>
           <tr>
-            <td colspan="10" style="text-align:right;font-size:11px;letter-spacing:1px;text-transform:uppercase;color:var(--ink-3);padding-right:16px;">Grand Total</td>
+            <td colspan="14" style="text-align:right;font-size:11px;letter-spacing:1px;text-transform:uppercase;color:var(--ink-3);padding-right:16px;">Grand Total</td>
             <td style="font-family:var(--num);font-size:15px;font-weight:700;color:var(--accent);">${inr(payroll.totalPay)}</td>
           </tr>
         </tfoot>
@@ -1060,7 +1348,7 @@ function editMonthDetail(month) {
     <div class="table-wrap">
       <table style="min-width:960px;">
         <thead>
-          <tr><th>ID</th><th>Employee</th><th>Monthly</th><th>WD</th><th>Present</th><th>Absent</th><th>Hrs</th><th>Debit</th><th>Day Adj</th><th>OT</th><th>Total</th></tr>
+          <tr><th>ID</th><th>Employee</th><th>Monthly</th><th>WD</th><th>Present</th><th>Absent</th><th>Hrs</th><th>Night</th><th>Dbt Hrs</th><th>Debit</th><th>Day Adj</th><th>OT</th><th>Debit Amt</th><th>Total</th></tr>
         </thead>
         <tbody>
           ${payroll.records.map(r => `
@@ -1072,16 +1360,19 @@ function editMonthDetail(month) {
               <td><input type="number" class="bulk-input" id="epr-${r.empId}" value="${r.presentDays}" min="0" max="31" oninput="calcEditRow('${r.empId}','${month}')"></td>
               <td><input type="number" class="bulk-input" id="eab-${r.empId}" value="${r.absentDays}" min="0" max="31" oninput="calcEditRow('${r.empId}','${month}')"></td>
               <td><input type="number" class="bulk-input" id="ehr-${r.empId}" value="${r.extraHours||0}" min="0" oninput="calcEditRow('${r.empId}','${month}')"></td>
+              <td><input type="number" class="bulk-input" id="ens-${r.empId}" value="${r.nightShifts||0}" min="0" oninput="calcEditRow('${r.empId}','${month}')" style="border-color:rgba(100,100,200,0.4);"></td>
+              <td><input type="number" class="bulk-input" id="edh-${r.empId}" value="${r.debitHours||0}" min="0" oninput="calcEditRow('${r.empId}','${month}')" style="border-color:rgba(192,57,43,0.3);"></td>
               <td><input type="number" class="bulk-input" id="edbt-${r.empId}" value="${r.debitAmount||0}" min="0" oninput="calcEditRow('${r.empId}','${month}')" style="border-color:rgba(192,57,43,0.3);"></td>
               <td id="eadj-${r.empId}" style="font-size:12px;font-weight:500;white-space:nowrap;">—</td>
               <td id="eot-${r.empId}" style="font-size:12px;white-space:nowrap;">—</td>
+              <td id="edbtamt-${r.empId}" style="font-size:12px;font-weight:500;color:var(--danger);white-space:nowrap;">—</td>
               <td id="etot-${r.empId}" style="font-family:var(--num);font-size:13px;font-weight:600;color:var(--accent);white-space:nowrap;">—</td>
             </tr>
           `).join('')}
         </tbody>
         <tfoot>
           <tr>
-            <td colspan="10" style="text-align:right;font-size:11px;letter-spacing:1px;text-transform:uppercase;color:var(--ink-3);padding-right:16px;">Grand Total</td>
+            <td colspan="13" style="text-align:right;font-size:11px;letter-spacing:1px;text-transform:uppercase;color:var(--ink-3);padding-right:16px;">Grand Total</td>
             <td id="eGrandTotal" style="font-family:var(--num);font-size:15px;font-weight:700;color:var(--accent);">—</td>
           </tr>
         </tfoot>
@@ -1106,6 +1397,8 @@ function calcEditRow(empId, month) {
 
   const present    = parseFloat(document.getElementById('epr-'  + empId)?.value) || 0;
   const extraHours = parseFloat(document.getElementById('ehr-'  + empId)?.value) || 0;
+  const nightShifts = parseFloat(document.getElementById('ens-' + empId)?.value) || 0;
+  const debitHours = parseFloat(document.getElementById('edh-'  + empId)?.value) || 0;
   const debit      = parseFloat(document.getElementById('edbt-' + empId)?.value) || 0;
 
   // Use snapshotted rates so editing attendance never alters historical rates
@@ -1114,17 +1407,22 @@ function calcEditRow(empId, month) {
   const dayAdj  = diff * rec.daily;
   const basePay = rec.monthly + dayAdj;
   const otPay   = extraHours * rec.hourly;
-  const total   = basePay + otPay - debit;
+  const nightPay = nightShifts * ((rec.nightBase || 0) + (rec.nightAppr || 0));
+  const debitHrsPay = debitHours * rec.hourly;
+  const total   = basePay + otPay + nightPay - debit - debitHrsPay;
 
-  const adjEl = document.getElementById('eadj-' + empId);
-  const otEl  = document.getElementById('eot-'  + empId);
-  const totEl = document.getElementById('etot-' + empId);
+  const adjEl    = document.getElementById('eadj-'    + empId);
+  const otEl     = document.getElementById('eot-'     + empId);
+  const dbtAmtEl = document.getElementById('edbtamt-' + empId);
+  const totEl    = document.getElementById('etot-'    + empId);
 
   if (adjEl) {
     adjEl.textContent = (dayAdj >= 0 ? '+' : '') + inr(dayAdj);
     adjEl.className   = dayAdj > 0 ? 'adj-positive' : dayAdj < 0 ? 'adj-negative' : '';
   }
   if (otEl)  otEl.textContent  = inr(otPay);
+  const totalDebit = debit + debitHrsPay;
+  if (dbtAmtEl) dbtAmtEl.textContent = totalDebit > 0 ? '-' + inr(totalDebit) : '—';
   if (totEl) totEl.textContent = inr(total);
 
   // Update grand total
@@ -1146,6 +1444,8 @@ async function saveMonthEdit(month) {
     presentDays:  parseFloat(document.getElementById('epr-'  + r.empId)?.value) ?? r.presentDays,
     absentDays:   parseFloat(document.getElementById('eab-'  + r.empId)?.value) ?? r.absentDays,
     extraHours:   parseFloat(document.getElementById('ehr-'  + r.empId)?.value) || 0,
+    nightShifts:  parseFloat(document.getElementById('ens-'  + r.empId)?.value) || 0,
+    debitHours:   parseFloat(document.getElementById('edh-'  + r.empId)?.value) || 0,
     debitAmount:  parseFloat(document.getElementById('edbt-' + r.empId)?.value) || 0,
   }));
 
