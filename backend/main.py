@@ -129,8 +129,8 @@ async def lifespan(app: FastAPI):
             try:
                 conn.execute(text(sql))
                 conn.commit()
-            except Exception as exc:
-                print(f"[Migration] Skipped (already applied): {exc}")
+            except Exception:
+                conn.rollback()  # clear aborted-transaction state before next statement
     db = SessionLocal()
     try:
         emp_count = db.query(EmployeeRow).count()
