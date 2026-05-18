@@ -407,7 +407,9 @@ def health():
 # ── Employees ─────────────────────────────────────────────────────────────────
 @app.get("/employees")
 def list_employees(db: Session = Depends(get_db)):
-    return [_emp_dict(e) for e in db.query(EmployeeRow).all()]
+    rows = db.query(EmployeeRow).all()
+    rows.sort(key=lambda e: (int(e.id) if e.id.isdigit() else float('inf'), e.id))
+    return [_emp_dict(e) for e in rows]
 
 
 def _assert_category_exists(category: str, db: Session):

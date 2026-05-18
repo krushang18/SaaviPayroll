@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Saavi — Payroll</title>
-<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@400;500;600;700&family=Jost:wght@300;400;500&family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Jost:wght@300;400;500&family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
 <style>
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -29,7 +29,6 @@
   --shadow-lg: 0 12px 48px rgba(0,0,0,0.14);
   --r:         14px;
   --r-sm:      9px;
-  --serif:     'Cormorant Garamond', Georgia, serif;
   --sans:      'Jost', sans-serif;
   --num:       'Space Grotesk', sans-serif;
 }
@@ -57,7 +56,7 @@ header {
   height: 56px; gap: 12px;
 }
 .logo {
-  font-family: var(--serif); font-size: 22px; font-weight: 700;
+  font-family: var(--sans); font-size: 22px; font-weight: 700;
   letter-spacing: 0.3px; color: var(--ink); white-space: nowrap;
 }
 .logo sup {
@@ -95,7 +94,7 @@ header {
   display: flex; align-items: flex-start; justify-content: space-between;
   margin-bottom: 20px; gap: 12px;
 }
-.page-title { font-family: var(--serif); font-size: 30px; font-weight: 700; letter-spacing: -0.3px; line-height: 1.1; }
+.page-title { font-family: var(--sans); font-size: 30px; font-weight: 700; letter-spacing: -0.3px; line-height: 1.1; }
 .page-sub { font-size: 13px; color: var(--ink-3); margin-top: 3px; font-weight: 300; }
 
 .stat-row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 20px; }
@@ -126,7 +125,7 @@ header {
 }
 .emp-row:hover { border-color: var(--border2); box-shadow: var(--shadow-md); }
 .emp-info-wrap { flex: 1; min-width: 0; cursor: pointer; }
-.emp-name { font-family: var(--serif); font-size: 17px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.emp-name { font-family: var(--sans); font-size: 17px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .emp-id { font-size: 12px; color: var(--ink-3); margin-top: 1px; }
 .emp-salary { font-size: 13px; color: var(--accent); font-weight: 500; margin-top: 2px; }
 .emp-actions { display: flex; flex-direction: column; gap: 6px; flex-shrink: 0; }
@@ -134,7 +133,7 @@ header {
 .avatar {
   width: 44px; height: 44px; border-radius: 50%;
   display: flex; align-items: center; justify-content: center;
-  font-family: var(--serif); font-weight: 700; font-size: 16px; flex-shrink: 0;
+  font-family: var(--sans); font-weight: 700; font-size: 16px; flex-shrink: 0;
 }
 .av0 { background:#eaf2ee; color:#2d6a4f; }
 .av1 { background:#eef2fa; color:#2d4fa0; }
@@ -158,7 +157,7 @@ header {
   background: var(--surface); border: 1px solid var(--border);
   border-radius: var(--r); padding: 20px; box-shadow: var(--shadow-sm); margin-bottom: 14px;
 }
-.card-title { font-family: var(--serif); font-size: 16px; font-weight: 600; margin-bottom: 16px; color: var(--ink); padding-bottom: 12px; border-bottom: 1px solid var(--border); }
+.card-title { font-family: var(--sans); font-size: 16px; font-weight: 600; margin-bottom: 16px; color: var(--ink); padding-bottom: 12px; border-bottom: 1px solid var(--border); }
 
 .form-group { margin-bottom: 14px; }
 .form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
@@ -206,7 +205,7 @@ thead { background: var(--surface2); }
 th { padding: 11px 12px; text-align: left; font-size: 10px; letter-spacing: 1.5px; text-transform: uppercase; color: var(--ink-3); font-weight: 500; white-space: nowrap; }
 td { padding: 11px 12px; border-top: 1px solid var(--border); font-size: 13px; color: var(--ink-2); }
 tr:hover td { background: var(--bg); }
-.td-primary { font-family: var(--serif); font-size: 15px; font-weight: 600; color: var(--ink); }
+.td-primary { font-family: var(--sans); font-size: 15px; font-weight: 600; color: var(--ink); }
 .td-mono { font-size: 12px; color: var(--ink-2); font-family: var(--num); }
 .td-green { color: var(--accent); font-weight: 600; }
 tfoot td { background: var(--surface2); border-top: 2px solid var(--border2) !important; font-weight: 600; }
@@ -220,7 +219,7 @@ tfoot td { background: var(--surface2); border-top: 2px solid var(--border2) !im
   padding: 20px; display: flex; align-items: center; gap: 16px; margin-bottom: 16px; box-shadow: var(--shadow-sm);
 }
 .profile-avatar { width: 56px; height: 56px; border-radius: 50%; font-size: 22px; flex-shrink: 0; }
-.profile-name { font-family: var(--serif); font-size: 22px; font-weight: 700; }
+.profile-name { font-family: var(--sans); font-size: 22px; font-weight: 700; }
 .profile-id { font-size: 12px; color: var(--ink-3); margin-top: 2px; }
 .profile-actions { margin-left: auto; display: flex; flex-direction: column; gap: 6px; }
 
@@ -242,7 +241,7 @@ tfoot td { background: var(--surface2); border-top: 2px solid var(--border2) !im
   animation: slideSheet 0.25s cubic-bezier(0.32,0.72,0,1);
 }
 .modal-pill { width: 36px; height: 4px; background: var(--border2); border-radius: 2px; margin: 10px auto 20px; }
-.modal-title { font-family: var(--serif); font-size: 22px; font-weight: 700; margin-bottom: 20px; }
+.modal-title { font-family: var(--sans); font-size: 22px; font-weight: 700; margin-bottom: 20px; }
 .modal-footer { display: flex; gap: 10px; margin-top: 20px; }
 .modal-footer .btn { flex: 1; }
 @keyframes slideSheet { from { transform:translateY(100%); } to { transform:translateY(0); } }
@@ -262,7 +261,7 @@ tfoot td { background: var(--surface2); border-top: 2px solid var(--border2) !im
 
 .empty-state { text-align: center; padding: 48px 16px; color: var(--ink-3); }
 .empty-icon { font-size: 36px; margin-bottom: 10px; }
-.empty-text { font-family: var(--serif); font-size: 18px; color: var(--ink-2); margin-bottom: 4px; font-weight: 600; }
+.empty-text { font-family: var(--sans); font-size: 18px; color: var(--ink-2); margin-bottom: 4px; font-weight: 600; }
 .empty-sub { font-size: 13px; font-weight: 300; }
 
 .toasts {
@@ -288,16 +287,19 @@ hr.light { border: none; border-top: 1px solid var(--border); margin: 14px 0; }
 
 /* BULK PAYROLL TABLE */
 .bulk-input {
-  width: 62px; padding: 5px 6px; font-size: 13px;
+  width: 80px; padding: 5px 8px; font-size: 13px;
   border-radius: 6px; border: 1px solid var(--border);
   background: var(--bg); font-family: var(--num);
-  text-align: center; -webkit-appearance: none; appearance: none;
+  text-align: center; appearance: none;
 }
 .bulk-input:focus {
   border-color: var(--accent); background: var(--surface);
   box-shadow: 0 0 0 2px var(--accent-lt); outline: none;
 }
 .bulk-input.missing { border-color: var(--danger); background: var(--danger-lt); }
+.bulk-input::-webkit-outer-spin-button,
+.bulk-input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+.bulk-input[type=number] { -moz-appearance: textfield; appearance: textfield; }
 
 /* MONTH CARDS */
 .month-card {
@@ -706,7 +708,7 @@ function showProfile(id) {
       <div class="comp-card"><div class="comp-label">Per Hour</div><div class="comp-val">${inr(emp.hourly)}</div></div>
       <div class="comp-card"><div class="comp-label">Working Days</div><div class="comp-val">${emp.workingDays} days</div></div>
     </div>
-    <div style="font-family:var(--serif);font-size:20px;font-weight:700;margin-bottom:12px;">Payroll History</div>
+    <div style="font-family:var(--sans);font-size:20px;font-weight:700;margin-bottom:12px;">Payroll History</div>
     ${history.length ? `
       <div class="table-wrap">
         <table>
@@ -951,7 +953,8 @@ function renderBulkTable() {
       <td style="text-align:center;"><input type="checkbox" class="bRowCheck" id="bchk-${e.id}" checked onchange="updateGrandTotal()"></td>
       <td class="td-mono">${e.id}</td>
       <td style="white-space:nowrap;">
-        <div style="font-family:var(--serif);font-size:14px;font-weight:600;">${e.name}</div>
+        <div style="font-family:var(--sans);font-size:14px;font-weight:600;">${e.name}</div>
+        ${e.category ? `<div style="font-size:11px;color:var(--accent);font-weight:500;margin-top:1px;letter-spacing:0.3px;">${e.category}</div>` : ''}
       </td>
       <td class="td-mono">${inr(e.monthly)}</td>
       <td class="td-mono">${inr(e.hourly)}</td>
@@ -987,12 +990,20 @@ function onBulkDatesChange() {
     }
     // Valid period
     overlay.classList.remove('active');
-    // Update present/absent max to exactly pd
+    // Update present/absent max to exactly pd, and recalculate counterpart for filled rows
     state.employees.forEach(e => {
       const prEl = document.getElementById('bpr-' + e.id);
       const abEl = document.getElementById('bab-' + e.id);
+      if (!prEl || !abEl) return;
       if (prEl) prEl.max = pd;
       if (abEl) abEl.max = pd;
+      const present = prEl.value !== '' ? parseFloat(prEl.value) : NaN;
+      const absent  = abEl.value !== '' ? parseFloat(abEl.value) : NaN;
+      if (!isNaN(present)) {
+        abEl.value = Math.max(0, pd - Math.floor(present));
+      } else if (!isNaN(absent)) {
+        prEl.value = Math.max(0, pd - Math.floor(absent));
+      }
     });
     const cd = Math.max(0, 30 - pd);
     let txt = 'Period: ' + pd + ' day' + (pd === 1 ? '' : 's') + ' (' + fmtDate(from) + ' – ' + fmtDate(to) + ')';
@@ -1251,7 +1262,7 @@ function renderPayrollHistory() {
     <div class="month-card">
       <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;">
         <div>
-          <div style="font-family:var(--serif);font-size:22px;font-weight:700;">${monthName(p.month)}</div>
+          <div style="font-family:var(--sans);font-size:22px;font-weight:700;">${monthName(p.month)}</div>
           <div style="font-size:12px;color:var(--ink-3);margin-top:3px;">
             ${fmtDate(p.fromDate)} – ${fmtDate(p.toDate)} &nbsp;·&nbsp; ${p.employeeCount} employees${compBadge}
           </div>
@@ -1279,13 +1290,13 @@ function showMonthDetail(month) {
   const detailCompNote = detailCd > 0 ? ` &nbsp;·&nbsp; <span style="color:var(--accent);font-weight:500;">+${detailCd} complementary day${detailCd === 1 ? '' : 's'}</span>` : '';
   document.getElementById('monthDetailContent').innerHTML = `
     <div style="margin-bottom:16px;">
-      <div style="font-family:var(--serif);font-size:26px;font-weight:700;">${monthName(payroll.month)} Payroll</div>
+      <div style="font-family:var(--sans);font-size:26px;font-weight:700;">${monthName(payroll.month)} Payroll</div>
       <div style="font-size:13px;color:var(--ink-3);margin-top:4px;">
         ${fmtDate(payroll.fromDate)} – ${fmtDate(payroll.toDate)} &nbsp;·&nbsp; ${payroll.employeeCount} employees${detailCompNote}
       </div>
     </div>
     <div class="table-wrap">
-      <table style="min-width:820px;">
+      <table style="min-width:900px;">
         <thead>
           <tr><th>ID</th><th>Employee</th><th>Monthly</th><th>WD</th><th>Present</th><th>Absent</th><th>Hrs</th><th>Night</th><th>Night Pay</th><th>Dbt Hrs</th><th>Day Adj</th><th>OT</th><th>Debit</th><th>Debit Amt</th><th>Total</th></tr>
         </thead>
@@ -1293,7 +1304,10 @@ function showMonthDetail(month) {
           ${payroll.records.map(r => `
             <tr>
               <td class="td-mono">${r.empId}</td>
-              <td><div class="td-primary">${r.empName}</div></td>
+              <td style="white-space:nowrap;">
+                <div class="td-primary">${r.empName}</div>
+                ${(()=>{ const emp=state.employees.find(e=>e.id===r.empId); return emp?.category?`<div style="font-size:11px;color:var(--accent);font-weight:500;margin-top:1px;letter-spacing:0.3px;">${emp.category}</div>`:''; })()}
+              </td>
               <td class="td-mono">${inr(r.monthly)}</td>
               <td class="td-mono">${r.workingDays}</td>
               <td>${r.presentDays}</td>
@@ -1340,13 +1354,13 @@ function editMonthDetail(month) {
   const editCompNote = editCd > 0 ? ` &nbsp;·&nbsp; <span style="color:var(--accent);font-weight:500;">+${editCd} comp. day${editCd === 1 ? '' : 's'}</span>` : '';
   document.getElementById('monthDetailContent').innerHTML = `
     <div style="margin-bottom:16px;">
-      <div style="font-family:var(--serif);font-size:26px;font-weight:700;">${monthName(payroll.month)} Payroll</div>
+      <div style="font-family:var(--sans);font-size:26px;font-weight:700;">${monthName(payroll.month)} Payroll</div>
       <div style="font-size:13px;color:var(--ink-3);margin-top:4px;">
         ${fmtDate(payroll.fromDate)} – ${fmtDate(payroll.toDate)} &nbsp;·&nbsp; Editing ${payroll.employeeCount} employees${editCompNote}
       </div>
     </div>
     <div class="table-wrap">
-      <table style="min-width:960px;">
+      <table style="min-width:1080px;">
         <thead>
           <tr><th>ID</th><th>Employee</th><th>Monthly</th><th>WD</th><th>Present</th><th>Absent</th><th>Hrs</th><th>Night</th><th>Dbt Hrs</th><th>Debit</th><th>Day Adj</th><th>OT</th><th>Debit Amt</th><th>Total</th></tr>
         </thead>
@@ -1354,11 +1368,14 @@ function editMonthDetail(month) {
           ${payroll.records.map(r => `
             <tr>
               <td class="td-mono">${r.empId}</td>
-              <td style="white-space:nowrap;"><div style="font-family:var(--serif);font-size:14px;font-weight:600;">${r.empName}</div></td>
+              <td style="white-space:nowrap;">
+                <div style="font-family:var(--sans);font-size:14px;font-weight:600;">${r.empName}</div>
+                ${(()=>{ const emp=state.employees.find(e=>e.id===r.empId); return emp?.category?`<div style="font-size:11px;color:var(--accent);font-weight:500;margin-top:1px;letter-spacing:0.3px;">${emp.category}</div>`:''; })()}
+              </td>
               <td class="td-mono">${inr(r.monthly)}</td>
               <td class="td-mono">${r.workingDays}</td>
-              <td><input type="number" class="bulk-input" id="epr-${r.empId}" value="${r.presentDays}" min="0" max="31" oninput="calcEditRow('${r.empId}','${month}')"></td>
-              <td><input type="number" class="bulk-input" id="eab-${r.empId}" value="${r.absentDays}" min="0" max="31" oninput="calcEditRow('${r.empId}','${month}')"></td>
+              <td><input type="number" class="bulk-input" id="epr-${r.empId}" value="${r.presentDays}" min="0" max="31" oninput="calcEditRow('${r.empId}','${month}','present')"></td>
+              <td><input type="number" class="bulk-input" id="eab-${r.empId}" value="${r.absentDays}" min="0" max="31" oninput="calcEditRow('${r.empId}','${month}','absent')"></td>
               <td><input type="number" class="bulk-input" id="ehr-${r.empId}" value="${r.extraHours||0}" min="0" oninput="calcEditRow('${r.empId}','${month}')"></td>
               <td><input type="number" class="bulk-input" id="ens-${r.empId}" value="${r.nightShifts||0}" min="0" oninput="calcEditRow('${r.empId}','${month}')" style="border-color:rgba(100,100,200,0.4);"></td>
               <td><input type="number" class="bulk-input" id="edh-${r.empId}" value="${r.debitHours||0}" min="0" oninput="calcEditRow('${r.empId}','${month}')" style="border-color:rgba(192,57,43,0.3);"></td>
@@ -1389,13 +1406,24 @@ function editMonthDetail(month) {
   payroll.records.forEach(r => calcEditRow(r.empId, month));
 }
 
-function calcEditRow(empId, month) {
+function calcEditRow(empId, month, source) {
   const payroll = state.payrolls.find(p => p.month === month);
   if (!payroll) return;
   const rec = payroll.records.find(r => r.empId === empId);
   if (!rec) return;
 
-  const present    = parseFloat(document.getElementById('epr-'  + empId)?.value) || 0;
+  const pd  = periodDays(payroll.fromDate, payroll.toDate);
+  const prEl = document.getElementById('epr-' + empId);
+  const abEl = document.getElementById('eab-' + empId);
+  if (source === 'present' && prEl && abEl && prEl.value !== '') {
+    const v = Math.min(pd, Math.max(0, Math.floor(parseFloat(prEl.value))));
+    prEl.value = v; abEl.value = pd - v;
+  } else if (source === 'absent' && prEl && abEl && abEl.value !== '') {
+    const v = Math.min(pd, Math.max(0, Math.floor(parseFloat(abEl.value))));
+    abEl.value = v; prEl.value = pd - v;
+  }
+
+  const present    = parseFloat(prEl?.value) || 0;
   const extraHours = parseFloat(document.getElementById('ehr-'  + empId)?.value) || 0;
   const nightShifts = parseFloat(document.getElementById('ens-' + empId)?.value) || 0;
   const debitHours = parseFloat(document.getElementById('edh-'  + empId)?.value) || 0;
