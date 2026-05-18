@@ -638,9 +638,12 @@ function switchView(v) {
 // ── Employees ─────────────────────────────────────────────────────────────────
 function renderEmployeeList() {
   const q = (document.getElementById('searchInput').value || '').toLowerCase();
-  const emps = state.employees.filter(e =>
-    !q || e.name.toLowerCase().includes(q) || e.id.toLowerCase().includes(q)
-  );
+  const emps = [...state.employees]
+    .sort((a, b) => {
+      const ai = parseInt(a.id), bi = parseInt(b.id);
+      return (isNaN(ai) ? Infinity : ai) - (isNaN(bi) ? Infinity : bi) || a.id.localeCompare(b.id);
+    })
+    .filter(e => !q || e.name.toLowerCase().includes(q) || e.id.toLowerCase().includes(q));
   const el = document.getElementById('empList');
   if (!emps.length) {
     el.innerHTML = `<div class="empty-state"><div class="empty-icon">👥</div><div class="empty-text">No employees</div><div class="empty-sub">Add your first team member</div></div>`;
