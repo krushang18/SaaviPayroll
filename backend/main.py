@@ -11,18 +11,16 @@ from sqlalchemy import create_engine, Column, String, Float, Integer, Index, tex
 from sqlalchemy.orm import declarative_base, sessionmaker, Session
 
 # ── Database ──────────────────────────────────────────────────────────────────
-_DB_URL = os.getenv("DATABASE_URL", "sqlite:///./saavi_payroll.db")
+_DB_URL = os.getenv("DATABASE_URL")
+if not _DB_URL:
+    raise RuntimeError("DATABASE_URL environment variable is required")
 # Render issues the legacy postgres:// scheme; SQLAlchemy requires postgresql://
 if _DB_URL.startswith("postgres://"):
     _DB_URL = _DB_URL.replace("postgres://", "postgresql://", 1)
 
-_DB_IS_SQLITE = _DB_URL.startswith("sqlite")
-print(f"[DB] Using {'SQLite (local)' if _DB_IS_SQLITE else 'PostgreSQL'}: {_DB_URL[:60]}...")
+print(f"[DB] Connecting to PostgreSQL: {_DB_URL[:60]}...")
 
-engine = create_engine(
-    _DB_URL,
-    connect_args={"check_same_thread": False} if _DB_URL.startswith("sqlite") else {},
-)
+engine = create_engine(_DB_URL)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 Base = declarative_base()
 
@@ -87,31 +85,6 @@ class PayrollRecordRow(Base):
     total         = Column(Float)
 
 
-# ── Seed data (mirrors current employees.json) ────────────────────────────────
-_SEED_EMPLOYEES = [
-    {"id": "4",    "name": "Sejal",               "monthly": 19360, "hourly": 92,  "workingDays": 27, "category": "Aaya"},
-    {"id": "42",   "name": "Sarla",               "monthly": 20640, "hourly": 52,  "workingDays": 27, "category": "Aaya"},
-    {"id": "53",   "name": "Rekha",               "monthly": 12000, "hourly": 67,  "workingDays": 30, "category": "Aaya"},
-    {"id": "76",   "name": "Jayshri",             "monthly": 14300, "hourly": 79,  "workingDays": 27, "category": "Aaya"},
-    {"id": "77",   "name": "Payal",               "monthly": 18150, "hourly": 60,  "workingDays": 27, "category": "Aaya"},
-    {"id": "84",   "name": "Nanda (N)",           "monthly": 14000, "hourly": 38,  "workingDays": 27, "category": "Aaya"},
-    {"id": "87",   "name": "Nanda (D)",           "monthly": 8900,  "hourly": 49,  "workingDays": 27, "category": "Aaya"},
-    {"id": "96",   "name": "Gangamasi",           "monthly": 11500, "hourly": 48,  "workingDays": 27, "category": "Aaya"},
-    {"id": "98",   "name": "Koki (D)",            "monthly": 5950,  "hourly": 50,  "workingDays": 28, "category": "Aaya"},
-    {"id": "102",  "name": "Kankuben",            "monthly": 10650, "hourly": 29,  "workingDays": 30, "category": "Aaya"},
-    {"id": "107",  "name": "Binaben",             "monthly": 17500, "hourly": 41,  "workingDays": 30, "category": "Aaya"},
-    {"id": "107B", "name": "Dimple",              "monthly": 12650, "hourly": 52,  "workingDays": 28, "category": "Aaya"},
-    {"id": "122",  "name": "Subhdra",             "monthly": 13500, "hourly": 64,  "workingDays": 28, "category": "Aaya"},
-    {"id": "116",  "name": "Neelam (Old)",        "monthly": 13130, "hourly": 62,  "workingDays": 28, "category": "Aaya"},
-    {"id": "117",  "name": "Maharani (Dakhuben)", "monthly": 9000,  "hourly": 0,   "workingDays": 30, "category": "Aaya"},
-    {"id": "118",  "name": "Khushbu didi",        "monthly": 6800,  "hourly": 0,   "workingDays": 30, "category": "Aaya"},
-    {"id": "119",  "name": "Amrutbhai (D)",       "monthly": 13200, "hourly": 200, "workingDays": 29, "category": "Aaya"},
-    {"id": "119B", "name": "Amrutbhai (N)",       "monthly": 12100, "hourly": 33,  "workingDays": 29, "category": "Aaya"},
-    {"id": "125",  "name": "Harjilal",            "monthly": 11000, "hourly": 0,   "workingDays": 30, "category": "Aaya"},
-    {"id": "126",  "name": "Sunita",              "monthly": 9350,  "hourly": 51,  "workingDays": 30, "category": "Aaya"},
-]
-
-
 # ── Lifespan ──────────────────────────────────────────────────────────────────
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -130,29 +103,7 @@ async def lifespan(app: FastAPI):
                 conn.execute(text(sql))
                 conn.commit()
             except Exception:
-                conn.rollback()  # clear aborted-transaction state before next statement
-    db = SessionLocal()
-    try:
-        emp_count = db.query(EmployeeRow).count()
-        print(f"[DB] Startup employee count: {emp_count}")
-        if os.getenv("SEED_DB", "").lower() == "true":
-            if emp_count == 0:
-                print("[DB] SEED_DB=true — seeding employees and categories")
-                for e in _SEED_EMPLOYEES:
-                    db.add(EmployeeRow(
-                        id=e["id"], name=e["name"], monthly=e["monthly"],
-                        hourly=e["hourly"], working_days=e["workingDays"],
-                        category=e.get("category"),
-                    ))
-                db.commit()
-            if db.query(CategoryRow).count() == 0:
-                db.add(CategoryRow(name="Aaya",   night_base=430, night_appr=100))
-                db.add(CategoryRow(name="Sister", night_base=650, night_appr=150))
-                db.commit()
-        else:
-            print("[DB] SEED_DB not set — skipping seed (production mode)")
-    finally:
-        db.close()
+                conn.rollback()
     yield
 
 
