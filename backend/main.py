@@ -78,11 +78,14 @@ class PayrollRecordRow(Base):
     debit_amount  = Column(Float)
     debit_hours   = Column(Float, default=0)
     debit_hrs_pay = Column(Float, default=0)
-    night_shifts  = Column(Float, default=0)
-    night_base    = Column(Float, default=0)
-    night_appr    = Column(Float, default=0)
-    night_pay     = Column(Float, default=0)
-    total         = Column(Float)
+    night_shifts     = Column(Float, default=0)
+    night_base       = Column(Float, default=0)
+    night_appr       = Column(Float, default=0)
+    night_pay        = Column(Float, default=0)
+    normal_leaves    = Column(Float, nullable=True)
+    on_call_leaves   = Column(Float, nullable=True)
+    effective_oncall = Column(Float, nullable=True)
+    total            = Column(Float)
 
 
 # ── Lifespan ──────────────────────────────────────────────────────────────────
@@ -98,6 +101,9 @@ async def lifespan(app: FastAPI):
             "ALTER TABLE payroll_records ADD COLUMN night_base REAL DEFAULT 0",
             "ALTER TABLE payroll_records ADD COLUMN night_appr REAL DEFAULT 0",
             "ALTER TABLE payroll_records ADD COLUMN night_pay REAL DEFAULT 0",
+            "ALTER TABLE payroll_records ADD COLUMN normal_leaves REAL DEFAULT NULL",
+            "ALTER TABLE payroll_records ADD COLUMN on_call_leaves REAL DEFAULT NULL",
+            "ALTER TABLE payroll_records ADD COLUMN effective_oncall REAL DEFAULT NULL",
         ]:
             try:
                 conn.execute(text(sql))
@@ -169,10 +175,13 @@ def _record_dict(row: PayrollRecordRow) -> dict:
         "debitHours":   row.debit_hours or 0,
         "debitHrsPay":  row.debit_hrs_pay or 0,
         "nightShifts":  row.night_shifts or 0,
-        "nightBase":    row.night_base or 0,
-        "nightAppr":    row.night_appr or 0,
-        "nightPay":     row.night_pay or 0,
-        "total":        row.total,
+        "nightBase":       row.night_base or 0,
+        "nightAppr":       row.night_appr or 0,
+        "nightPay":        row.night_pay or 0,
+        "normalLeaves":    row.normal_leaves,
+        "onCallLeaves":    row.on_call_leaves,
+        "effectiveOncall": row.effective_oncall,
+        "total":           row.total,
     }
 
 
@@ -231,12 +240,14 @@ class CategoryIn(BaseModel):
 
 class PayrollEntry(BaseModel):
     empId: str
-    presentDays: Optional[float] = None
-    absentDays: Optional[float] = None
-    extraHours: float  = Field(default=0, ge=0)
-    debitHours: float  = Field(default=0, ge=0)
-    debitAmount: float = Field(default=0, ge=0)
-    nightShifts: float = Field(default=0, ge=0)
+    presentDays:  Optional[float] = None
+    absentDays:   Optional[float] = None
+    normalLeaves: Optional[float] = Field(default=None, ge=0)
+    onCallLeaves: Optional[float] = Field(default=None, ge=0)
+    extraHours:   float = Field(default=0, ge=0)
+    debitHours:   float = Field(default=0, ge=0)
+    debitAmount:  float = Field(default=0, ge=0)
+    nightShifts:  float = Field(default=0, ge=0)
 
 
 class PayrollIn(BaseModel):
@@ -273,10 +284,23 @@ def _period_days(from_date: str, to_date: str) -> int:
 def _calc_record(emp: dict, fromDate: str, toDate: str,
                  presentDays: Optional[float], absentDays: Optional[float],
                  extraHours: float, debitHours: float = 0, debitAmount: float = 0,
-                 nightShifts: float = 0, nightBase: float = 0, nightAppr: float = 0) -> dict:
+                 nightShifts: float = 0, nightBase: float = 0, nightAppr: float = 0,
+                 normalLeaves: Optional[float] = None, onCallLeaves: Optional[float] = None) -> dict:
     pd = _period_days(fromDate, toDate)
     daily = math.floor(emp["monthly"] / 30)
     wd = emp.get("workingDays", 30)
+
+    # On-call leave penalty: first 2 count normally, each beyond 2 counts as 2
+    effective_oncall = None
+    effective_absent_for_salary = None
+    if onCallLeaves is not None or normalLeaves is not None:
+        ocl = math.floor(onCallLeaves or 0)
+        nl  = math.floor(normalLeaves or 0)
+        effective_oncall = min(ocl, 2) + max(0, ocl - 2) * 2
+        raw_absent = nl + ocl                               # real days off — for display
+        effective_absent_for_salary = nl + effective_oncall  # penalized — for salary
+        absentDays = raw_absent
+        presentDays = None  # re-derived as pd - raw_absent
 
     present = presentDays
     absent = absentDays
@@ -297,7 +321,10 @@ def _calc_record(emp: dict, fromDate: str, toDate: str,
 
     # Months shorter than 30 days get free complementary days (salary is always /30)
     comp_days = max(0, 30 - pd)
-    effective_present = present + comp_days
+    if effective_absent_for_salary is not None:
+        effective_present = pd - effective_absent_for_salary + comp_days
+    else:
+        effective_present = present + comp_days
 
     diff = effective_present - wd
     dayAdj = diff * daily
@@ -321,16 +348,19 @@ def _calc_record(emp: dict, fromDate: str, toDate: str,
         "extraHours":  extraHours,
         "debitHours":  debitHours,
         "debitHrsPay": debitHrsPay,
-        "nightShifts": nightShifts,
-        "nightBase":   nightBase,
-        "nightAppr":   nightAppr,
-        "nightPay":    nightPay,
-        "diff":        diff,
-        "dayAdj":      dayAdj,
-        "basePay":     basePay,
-        "otPay":       otPay,
-        "debitAmount": debitAmount,
-        "total":       total,
+        "nightShifts":    nightShifts,
+        "nightBase":      nightBase,
+        "nightAppr":      nightAppr,
+        "nightPay":       nightPay,
+        "normalLeaves":   normalLeaves,
+        "onCallLeaves":   onCallLeaves,
+        "effectiveOncall": effective_oncall,
+        "diff":           diff,
+        "dayAdj":         dayAdj,
+        "basePay":        basePay,
+        "otPay":          otPay,
+        "debitAmount":    debitAmount,
+        "total":          total,
     }
 
 
@@ -348,7 +378,8 @@ def _compute_payroll(payload: PayrollIn, db: Session) -> dict:
             rec = _calc_record(emp, payload.fromDate, payload.toDate,
                                entry.presentDays, entry.absentDays,
                                entry.extraHours, entry.debitHours, entry.debitAmount,
-                               entry.nightShifts, night_base, night_appr)
+                               entry.nightShifts, night_base, night_appr,
+                               entry.normalLeaves, entry.onCallLeaves)
             records.append(rec)
         except ValueError as e:
             errors.append(str(e))
@@ -394,6 +425,9 @@ def _persist_records(result: dict, db: Session):
             night_base=rec["nightBase"],
             night_appr=rec["nightAppr"],
             night_pay=rec["nightPay"],
+            normal_leaves=rec.get("normalLeaves"),
+            on_call_leaves=rec.get("onCallLeaves"),
+            effective_oncall=rec.get("effectiveOncall"),
             total=rec["total"],
         ))
 

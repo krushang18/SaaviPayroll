@@ -84,7 +84,7 @@ header {
 .bnav-icon { font-size: 18px; line-height: 1; }
 
 .app-body { max-width: 1600px; margin: 0 auto; padding: 24px 16px 96px; }
-#view-employees, #view-profile, #view-history, #view-month-detail { max-width: 1100px; margin-left: auto; margin-right: auto; }
+#view-employees, #view-profile, #view-history { max-width: 1100px; margin-left: auto; margin-right: auto; }
 
 .view { display: none; }
 .view.active { display: block; animation: fadeUp 0.22s ease; }
@@ -197,6 +197,13 @@ select {
 .btn:disabled { opacity: 0.4; pointer-events: none; }
 
 .table-wrap { overflow-x: auto; border-radius: var(--r); border: 1px solid var(--border); background: var(--surface); box-shadow: var(--shadow-sm); }
+.table-wrap-fit { overflow-x: auto; border-radius: var(--r); border: 1px solid var(--border); background: var(--surface); box-shadow: var(--shadow-sm); }
+.table-wrap-fit table { width: 100%; table-layout: fixed; }
+.table-wrap-fit th:nth-child(1), .table-wrap-fit td:nth-child(1) { width: 4%; }
+.table-wrap-fit th:nth-child(2), .table-wrap-fit td:nth-child(2) { width: 12%; }
+.table-wrap-fit th:nth-child(3), .table-wrap-fit td:nth-child(3) { width: 7%; }
+.table-wrap-fit th:nth-child(n+4), .table-wrap-fit td:nth-child(n+4) { width: 5.5%; }
+.table-wrap-fit .bulk-input { width: 100%; min-width: 0; box-sizing: border-box; }
 .table-overlay-wrap { position: relative; }
 .table-overlay { display: none; position: absolute; inset: 0; z-index: 10; background: rgba(255,255,255,0.6); backdrop-filter: blur(3px); border-radius: var(--r); pointer-events: all; align-items: center; justify-content: center; }
 .table-overlay.active { display: flex; }
@@ -403,6 +410,9 @@ hr.light { border: none; border-top: 1px solid var(--border); margin: 14px 0; }
               <th>WD</th>
               <th>Present</th>
               <th>Absent</th>
+              <th>Nml Leave</th>
+              <th>OnCall</th>
+              <th>Eff. Leave</th>
               <th>Ex. Hrs</th>
               <th>Night</th>
               <th>Dbt Hrs</th>
@@ -415,7 +425,7 @@ hr.light { border: none; border-top: 1px solid var(--border); margin: 14px 0; }
           <tbody id="bulkBody"></tbody>
           <tfoot>
             <tr>
-              <td colspan="14" style="text-align:right;font-size:11px;letter-spacing:1px;text-transform:uppercase;color:var(--ink-3);padding-right:16px;">Grand Total</td>
+              <td colspan="17" style="text-align:right;font-size:11px;letter-spacing:1px;text-transform:uppercase;color:var(--ink-3);padding-right:16px;">Grand Total</td>
               <td id="bGrandTotal" style="font-family:var(--num);font-size:15px;font-weight:700;color:var(--accent);">—</td>
             </tr>
           </tfoot>
@@ -945,13 +955,19 @@ function initBulkCalc() {
 
 function renderBulkTable() {
   const tbody = document.getElementById('bulkBody');
+  // Always display in ascending numeric ID order
+  const sortedEmps = [...state.employees].sort((a, b) => {
+    const na = parseInt(a.id, 10), nb = parseInt(b.id, 10);
+    if (!isNaN(na) && !isNaN(nb)) return na - nb;
+    return a.id < b.id ? -1 : a.id > b.id ? 1 : 0;
+  });
   // Check if employee rows already exist (preserve in-progress inputs)
   const existingIds = new Set([...tbody.querySelectorAll('tr')].map(r => r.id.slice(5)));
-  const currentIds = new Set(state.employees.map(e => e.id));
+  const currentIds = new Set(sortedEmps.map(e => e.id));
   const same = [...currentIds].every(id => existingIds.has(id)) && existingIds.size === currentIds.size;
   if (same) return;
 
-  tbody.innerHTML = state.employees.map(e => `
+  tbody.innerHTML = sortedEmps.map(e => `
     <tr id="brow-${e.id}">
       <td style="text-align:center;"><input type="checkbox" class="bRowCheck" id="bchk-${e.id}" checked onchange="updateGrandTotal()"></td>
       <td class="td-mono">${e.id}</td>
@@ -964,6 +980,9 @@ function renderBulkTable() {
       <td class="td-mono">${e.workingDays}</td>
       <td><input type="number" class="bulk-input" id="bpr-${e.id}" min="0" max="31" placeholder="—" oninput="calcBulkRow('${e.id}','present')"></td>
       <td><input type="number" class="bulk-input" id="bab-${e.id}" min="0" max="31" placeholder="—" oninput="calcBulkRow('${e.id}','absent')"></td>
+      <td><input type="number" class="bulk-input" id="bnl-${e.id}" min="0" placeholder="0" disabled oninput="calcBulkRow('${e.id}','normal')" style="border-color:rgba(230,126,34,0.4);"></td>
+      <td><input type="number" class="bulk-input" id="bocl-${e.id}" min="0" placeholder="0" disabled oninput="calcBulkRow('${e.id}','oncall')" style="border-color:rgba(230,126,34,0.4);"></td>
+      <td id="befl-${e.id}" style="font-size:12px;font-weight:500;white-space:nowrap;">—</td>
       <td><input type="number" class="bulk-input" id="bhr-${e.id}" min="0" placeholder="0" oninput="calcBulkRow('${e.id}')"></td>
       <td><input type="number" class="bulk-input" id="bns-${e.id}" min="0" placeholder="0" oninput="calcBulkRow('${e.id}')" style="border-color:rgba(100,100,200,0.4);"></td>
       <td><input type="number" class="bulk-input" id="bdh-${e.id}" min="0" placeholder="0" oninput="calcBulkRow('${e.id}')" style="border-color:rgba(192,57,43,0.3);"></td>
@@ -1031,6 +1050,22 @@ function onBulkDatesChange() {
   state.employees.forEach(e => calcBulkRow(e.id));
 }
 
+// When absent changes, keep on-call (clamped) and recompute normal = absent - oncall.
+// Updates the Eff. Leave display too. No-ops if leave fields are empty.
+function _resyncLeavesToAbsent(nlEl, oclEl, efEl, newAbsent) {
+  if (!nlEl || !oclEl) return;
+  const hasLeaves = nlEl.value !== '' || oclEl.value !== '';
+  if (!hasLeaves) return;
+  const ocl = Math.min(newAbsent, Math.max(0, Math.floor(parseFloat(oclEl.value) || 0)));
+  const nl  = Math.max(0, newAbsent - ocl);
+  oclEl.value = ocl;
+  nlEl.value  = nl;
+  if (efEl) {
+    const effOcl = Math.min(ocl, 2) + Math.max(0, ocl - 2) * 2;
+    efEl.textContent = nl + effOcl;
+  }
+}
+
 function calcBulkRow(empId, source) {
   const from = document.getElementById('bCalcFrom').value;
   const to = document.getElementById('bCalcTo').value;
@@ -1050,26 +1085,47 @@ function calcBulkRow(empId, source) {
   const daily = Math.floor(emp.monthly / 30);
   const wd = emp.workingDays;
 
-  const prEl = document.getElementById('bpr-' + empId);
-  const abEl = document.getElementById('bab-' + empId);
-  const hrEl = document.getElementById('bhr-' + empId);
+  const prEl  = document.getElementById('bpr-'  + empId);
+  const abEl  = document.getElementById('bab-'  + empId);
+  const hrEl  = document.getElementById('bhr-'  + empId);
+  const nlEl  = document.getElementById('bnl-'  + empId);
+  const oclEl = document.getElementById('bocl-' + empId);
+  const efEl  = document.getElementById('befl-' + empId);
+
+  // ── Step 1: Present / Absent sync ────────────────────────────────────────────
+  // Cleared field: reset both and disable leave inputs
+  if ((source === 'present' && prEl.value === '') || (source === 'absent' && abEl.value === '')) {
+    prEl.value = ''; abEl.value = '';
+    if (nlEl)  { nlEl.disabled  = true; nlEl.value  = ''; }
+    if (oclEl) { oclEl.disabled = true; oclEl.value = ''; }
+    if (efEl)  efEl.textContent = '—';
+    adjEl.textContent = '—'; if (dbtAmtEl) dbtAmtEl.textContent = '—'; totEl.textContent = '—';
+    updateGrandTotal(); return;
+  }
 
   let present = prEl.value !== '' ? parseFloat(prEl.value) : NaN;
   let absent  = abEl.value !== '' ? parseFloat(abEl.value) : NaN;
 
-  // When a source field is typed, auto-correct the other to always sum to pd
   if (source === 'present' && !isNaN(present)) {
     const v = Math.min(pd, Math.max(0, Math.floor(present)));
     prEl.value = v; present = v;
     abEl.value = pd - v; absent = pd - v;
     prEl.placeholder = '—'; abEl.placeholder = '—';
+    if (nlEl)  nlEl.disabled  = false;
+    if (oclEl) oclEl.disabled = false;
+    if (nlEl && oclEl && nlEl.value === '' && oclEl.value === '') { nlEl.value = absent; oclEl.value = 0; }
+    _resyncLeavesToAbsent(nlEl, oclEl, efEl, absent);
   } else if (source === 'absent' && !isNaN(absent)) {
     const v = Math.min(pd, Math.max(0, Math.floor(absent)));
     abEl.value = v; absent = v;
     prEl.value = pd - v; present = pd - v;
     prEl.placeholder = '—'; abEl.placeholder = '—';
-  } else {
-    // No source — show auto-computed placeholder only
+    if (nlEl)  nlEl.disabled  = false;
+    if (oclEl) oclEl.disabled = false;
+    if (nlEl && oclEl && nlEl.value === '' && oclEl.value === '') { nlEl.value = absent; oclEl.value = 0; }
+    _resyncLeavesToAbsent(nlEl, oclEl, efEl, absent);
+  } else if (source !== 'normal' && source !== 'oncall') {
+    // No source (date change / recalc): sync placeholders, manage lock state
     if (!isNaN(present) && isNaN(absent)) {
       abEl.placeholder = String(Math.max(0, pd - Math.floor(present)));
     } else if (isNaN(present) && !isNaN(absent)) {
@@ -1077,6 +1133,10 @@ function calcBulkRow(empId, source) {
     } else {
       prEl.placeholder = '—'; abEl.placeholder = '—';
     }
+    const hasAttendance = !isNaN(present) || !isNaN(absent);
+    if (nlEl)  nlEl.disabled  = !hasAttendance;
+    if (oclEl) oclEl.disabled = !hasAttendance;
+    if (!hasAttendance && efEl) efEl.textContent = '—';
   }
 
   if (isNaN(present) && isNaN(absent)) {
@@ -1096,6 +1156,39 @@ function calcBulkRow(empId, source) {
     updateGrandTotal(); return;
   }
 
+  // ── Step 2: Normal / On-call leave sync (normal + oncall = absent) ────────────
+  // When one leave field is typed, auto-fill the other so they sum to absent
+  if (source === 'normal') {
+    if (nlEl.value === '') {
+      if (oclEl) oclEl.value = '';
+    } else {
+      const nl = Math.min(absent, Math.max(0, Math.floor(parseFloat(nlEl.value) || 0)));
+      nlEl.value = nl;
+      if (oclEl) oclEl.value = absent - nl;
+    }
+  } else if (source === 'oncall') {
+    if (oclEl.value === '') {
+      if (nlEl) nlEl.value = '';
+    } else {
+      const ocl = Math.min(absent, Math.max(0, Math.floor(parseFloat(oclEl.value) || 0)));
+      oclEl.value = ocl;
+      if (nlEl) nlEl.value = absent - ocl;
+    }
+  }
+
+  // Compute effective absence from leave fields (if any are filled)
+  let effectiveAbsent = null;
+  const nlVal  = nlEl  && nlEl.value  !== '' ? Math.floor(parseFloat(nlEl.value)  || 0) : null;
+  const oclVal = oclEl && oclEl.value !== '' ? Math.floor(parseFloat(oclEl.value) || 0) : null;
+  if (nlVal !== null || oclVal !== null) {
+    const effOcl = Math.min(oclVal || 0, 2) + Math.max(0, (oclVal || 0) - 2) * 2;
+    effectiveAbsent = (nlVal || 0) + effOcl;
+    if (efEl) efEl.textContent = effectiveAbsent;
+  } else if (source !== 'present' && source !== 'absent') {
+    if (efEl) efEl.textContent = '—';
+  }
+
+  // ── Step 3: Salary calculation ────────────────────────────────────────────────
   const compDays = Math.max(0, 30 - pd);
   const extraHours = hrEl.value !== '' ? parseFloat(hrEl.value) || 0 : 0;
   const nsEl = document.getElementById('bns-' + empId);
@@ -1104,7 +1197,9 @@ function calcBulkRow(empId, source) {
   const debitHours = dhEl && dhEl.value !== '' ? parseFloat(dhEl.value) || 0 : 0;
   const dbtEl = document.getElementById('bdbt-' + empId);
   const debitAmount = dbtEl && dbtEl.value !== '' ? parseFloat(dbtEl.value) || 0 : 0;
-  const diff   = (present + compDays) - wd;
+  const diff = effectiveAbsent !== null
+    ? (pd - effectiveAbsent + compDays) - wd
+    : (present + compDays) - wd;
   const dayAdj = diff * daily;
   const basePay = emp.monthly + dayAdj;
   const otPay  = extraHours * emp.hourly;
@@ -1155,9 +1250,13 @@ async function savePayroll() {
     const prEl = document.getElementById('bpr-' + emp.id);
     const abEl = document.getElementById('bab-' + emp.id);
     const hrEl = document.getElementById('bhr-' + emp.id);
+    const nlEl  = document.getElementById('bnl-'  + emp.id);
+    const oclEl = document.getElementById('bocl-' + emp.id);
 
-    const presentDays = prEl && prEl.value !== '' ? parseFloat(prEl.value) : null;
-    const absentDays  = abEl && abEl.value !== '' ? parseFloat(abEl.value) : null;
+    const presentDays  = prEl  && prEl.value  !== '' ? parseFloat(prEl.value)  : null;
+    const absentDays   = abEl  && abEl.value  !== '' ? parseFloat(abEl.value)  : null;
+    const normalLeaves = (nlEl  && !nlEl.disabled  && nlEl.value  !== '') ? parseFloat(nlEl.value)  : null;
+    const onCallLeaves = (oclEl && !oclEl.disabled && oclEl.value !== '') ? parseFloat(oclEl.value) : null;
     const extraHours  = hrEl && hrEl.value !== '' ? parseFloat(hrEl.value) || 0 : 0;
     const nsEl = document.getElementById('bns-' + emp.id);
     const nightShifts = nsEl && nsEl.value !== '' ? parseFloat(nsEl.value) || 0 : 0;
@@ -1166,14 +1265,36 @@ async function savePayroll() {
     const dbtEl = document.getElementById('bdbt-' + emp.id);
     const debitAmount = dbtEl && dbtEl.value !== '' ? parseFloat(dbtEl.value) || 0 : 0;
 
-    if (presentDays === null && absentDays === null) {
-      errors.push(emp.name);
+    const ab = absentDays ?? 0;
+    if (presentDays === null && absentDays === null && normalLeaves === null && onCallLeaves === null) {
+      errors.push(emp.name + ' (no attendance)');
       if (prEl) prEl.classList.add('missing');
       if (abEl) abEl.classList.add('missing');
+    } else if (ab > 0 && normalLeaves === null && onCallLeaves === null) {
+      // Absent days exist but no leave breakdown entered
+      errors.push(`${emp.name} (fill normal & on-call leaves — absent is ${ab})`);
+      if (nlEl)  nlEl.classList.add('missing');
+      if (oclEl) oclEl.classList.add('missing');
+    } else if (ab > 0 && (normalLeaves !== null || onCallLeaves !== null)) {
+      // Leave breakdown must sum to absent days
+      const leaveSum = (normalLeaves || 0) + (onCallLeaves || 0);
+      if (leaveSum !== ab) {
+        errors.push(`${emp.name} (normal + on-call = ${leaveSum}, must equal absent ${ab})`);
+        if (nlEl)  nlEl.classList.add('missing');
+        if (oclEl) oclEl.classList.add('missing');
+      } else {
+        if (prEl)  prEl.classList.remove('missing');
+        if (abEl)  abEl.classList.remove('missing');
+        if (nlEl)  nlEl.classList.remove('missing');
+        if (oclEl) oclEl.classList.remove('missing');
+        entries.push({ empId: emp.id, presentDays, absentDays, normalLeaves, onCallLeaves, extraHours, nightShifts, debitHours, debitAmount });
+      }
     } else {
-      if (prEl) prEl.classList.remove('missing');
-      if (abEl) abEl.classList.remove('missing');
-      entries.push({ empId: emp.id, presentDays, absentDays, extraHours, nightShifts, debitHours, debitAmount });
+      if (prEl)  prEl.classList.remove('missing');
+      if (abEl)  abEl.classList.remove('missing');
+      if (nlEl)  nlEl.classList.remove('missing');
+      if (oclEl) oclEl.classList.remove('missing');
+      entries.push({ empId: emp.id, presentDays, absentDays, normalLeaves, onCallLeaves, extraHours, nightShifts, debitHours, debitAmount });
     }
   }
 
@@ -1238,6 +1359,18 @@ function loadExistingPayroll() {
     set('bns-'  + r.empId, r.nightShifts || 0);
     set('bdh-'  + r.empId, r.debitHours  || 0);
     set('bdbt-' + r.empId, r.debitAmount || 0);
+    // Enable and fill leave fields from saved data
+    const nlEl  = document.getElementById('bnl-'  + r.empId);
+    const oclEl = document.getElementById('bocl-' + r.empId);
+    const efEl  = document.getElementById('befl-' + r.empId);
+    if (nlEl)  { nlEl.disabled  = false; nlEl.value  = r.normalLeaves  != null ? r.normalLeaves  : (r.absentDays || 0); }
+    if (oclEl) { oclEl.disabled = false; oclEl.value = r.onCallLeaves   != null ? r.onCallLeaves  : 0; }
+    if (nlEl && oclEl && efEl) {
+      const nl = Math.floor(parseFloat(nlEl.value) || 0);
+      const ocl = Math.floor(parseFloat(oclEl.value) || 0);
+      const effOcl = Math.min(ocl, 2) + Math.max(0, ocl - 2) * 2;
+      efEl.textContent = nl + effOcl;
+    }
     calcBulkRow(r.empId);
   });
   // Sync select-all checkbox state
@@ -1298,10 +1431,10 @@ function showMonthDetail(month) {
         ${fmtDate(payroll.fromDate)} – ${fmtDate(payroll.toDate)} &nbsp;·&nbsp; ${payroll.employeeCount} employees${detailCompNote}
       </div>
     </div>
-    <div class="table-wrap">
-      <table style="min-width:900px;">
+    <div class="table-wrap-fit">
+      <table>
         <thead>
-          <tr><th>ID</th><th>Employee</th><th>Monthly</th><th>WD</th><th>Present</th><th>Absent</th><th>Hrs</th><th>Night</th><th>Night Pay</th><th>Dbt Hrs</th><th>Day Adj</th><th>OT</th><th>Debit</th><th>Debit Amt</th><th>Total</th></tr>
+          <tr><th>ID</th><th>Employee</th><th>Monthly</th><th>WD</th><th>Present</th><th>Absent</th><th>Nml Leave</th><th>OnCall</th><th>Eff. Leave</th><th>Hrs</th><th>Night</th><th>Night Pay</th><th>Dbt Hrs</th><th>Day Adj</th><th>OT</th><th>Debit</th><th>Debit Amt</th><th>Total</th></tr>
         </thead>
         <tbody>
           ${payroll.records.map(r => `
@@ -1315,6 +1448,9 @@ function showMonthDetail(month) {
               <td class="td-mono">${r.workingDays}</td>
               <td>${r.presentDays}</td>
               <td>${r.absentDays}</td>
+              <td>${r.normalLeaves ?? '—'}</td>
+              <td>${r.onCallLeaves ?? '—'}</td>
+              <td>${r.effectiveOncall ?? '—'}</td>
               <td>${r.extraHours || 0}</td>
               <td>${r.nightShifts || 0}</td>
               <td style="color:var(--accent);font-weight:500;">${(r.nightPay||0)>0?'+'+inr(r.nightPay):'—'}</td>
@@ -1329,7 +1465,7 @@ function showMonthDetail(month) {
         </tbody>
         <tfoot>
           <tr>
-            <td colspan="14" style="text-align:right;font-size:11px;letter-spacing:1px;text-transform:uppercase;color:var(--ink-3);padding-right:16px;">Grand Total</td>
+            <td colspan="17" style="text-align:right;font-size:11px;letter-spacing:1px;text-transform:uppercase;color:var(--ink-3);padding-right:16px;">Grand Total</td>
             <td style="font-family:var(--num);font-size:15px;font-weight:700;color:var(--accent);">${inr(payroll.totalPay)}</td>
           </tr>
         </tfoot>
@@ -1362,10 +1498,10 @@ function editMonthDetail(month) {
         ${fmtDate(payroll.fromDate)} – ${fmtDate(payroll.toDate)} &nbsp;·&nbsp; Editing ${payroll.employeeCount} employees${editCompNote}
       </div>
     </div>
-    <div class="table-wrap">
-      <table style="min-width:1080px;">
+    <div class="table-wrap-fit">
+      <table>
         <thead>
-          <tr><th>ID</th><th>Employee</th><th>Monthly</th><th>WD</th><th>Present</th><th>Absent</th><th>Hrs</th><th>Night</th><th>Dbt Hrs</th><th>Debit</th><th>Day Adj</th><th>OT</th><th>Debit Amt</th><th>Total</th></tr>
+          <tr><th>ID</th><th>Employee</th><th>Monthly</th><th>WD</th><th>Present</th><th>Absent</th><th>Nml Leave</th><th>OnCall</th><th>Eff. Leave</th><th>Hrs</th><th>Night</th><th>Dbt Hrs</th><th>Debit</th><th>Day Adj</th><th>OT</th><th>Debit Amt</th><th>Total</th></tr>
         </thead>
         <tbody>
           ${payroll.records.map(r => `
@@ -1379,6 +1515,9 @@ function editMonthDetail(month) {
               <td class="td-mono">${r.workingDays}</td>
               <td><input type="number" class="bulk-input" id="epr-${r.empId}" value="${r.presentDays}" min="0" max="31" oninput="calcEditRow('${r.empId}','${month}','present')"></td>
               <td><input type="number" class="bulk-input" id="eab-${r.empId}" value="${r.absentDays}" min="0" max="31" oninput="calcEditRow('${r.empId}','${month}','absent')"></td>
+              <td><input type="number" class="bulk-input" id="enl-${r.empId}" value="${r.normalLeaves ?? ''}" min="0" placeholder="0" ${r.normalLeaves == null ? 'disabled' : ''} oninput="calcEditRow('${r.empId}','${month}','normal')" style="border-color:rgba(230,126,34,0.4);"></td>
+              <td><input type="number" class="bulk-input" id="eocl-${r.empId}" value="${r.onCallLeaves ?? ''}" min="0" placeholder="0" ${r.onCallLeaves == null ? 'disabled' : ''} oninput="calcEditRow('${r.empId}','${month}','oncall')" style="border-color:rgba(230,126,34,0.4);"></td>
+              <td id="eefl-${r.empId}" style="font-size:12px;font-weight:500;white-space:nowrap;">—</td>
               <td><input type="number" class="bulk-input" id="ehr-${r.empId}" value="${r.extraHours||0}" min="0" oninput="calcEditRow('${r.empId}','${month}')"></td>
               <td><input type="number" class="bulk-input" id="ens-${r.empId}" value="${r.nightShifts||0}" min="0" oninput="calcEditRow('${r.empId}','${month}')" style="border-color:rgba(100,100,200,0.4);"></td>
               <td><input type="number" class="bulk-input" id="edh-${r.empId}" value="${r.debitHours||0}" min="0" oninput="calcEditRow('${r.empId}','${month}')" style="border-color:rgba(192,57,43,0.3);"></td>
@@ -1392,7 +1531,7 @@ function editMonthDetail(month) {
         </tbody>
         <tfoot>
           <tr>
-            <td colspan="13" style="text-align:right;font-size:11px;letter-spacing:1px;text-transform:uppercase;color:var(--ink-3);padding-right:16px;">Grand Total</td>
+            <td colspan="16" style="text-align:right;font-size:11px;letter-spacing:1px;text-transform:uppercase;color:var(--ink-3);padding-right:16px;">Grand Total</td>
             <td id="eGrandTotal" style="font-family:var(--num);font-size:15px;font-weight:700;color:var(--accent);">—</td>
           </tr>
         </tfoot>
@@ -1416,14 +1555,73 @@ function calcEditRow(empId, month, source) {
   if (!rec) return;
 
   const pd  = periodDays(payroll.fromDate, payroll.toDate);
-  const prEl = document.getElementById('epr-' + empId);
-  const abEl = document.getElementById('eab-' + empId);
+  const prEl  = document.getElementById('epr-'  + empId);
+  const abEl  = document.getElementById('eab-'  + empId);
+  const enlEl = document.getElementById('enl-'  + empId);
+  const oclEl = document.getElementById('eocl-' + empId);
+  const efEl  = document.getElementById('eefl-' + empId);
+
+  // Cleared present/absent: reset leaves too
+  if ((source === 'present' && prEl && prEl.value === '') || (source === 'absent' && abEl && abEl.value === '')) {
+    if (prEl) prEl.value = ''; if (abEl) abEl.value = '';
+    if (enlEl) { enlEl.disabled = true; enlEl.value = ''; }
+    if (oclEl) { oclEl.disabled = true; oclEl.value = ''; }
+    if (efEl) efEl.textContent = '—';
+    return;
+  }
+
+  // Present / Absent sync
   if (source === 'present' && prEl && abEl && prEl.value !== '') {
     const v = Math.min(pd, Math.max(0, Math.floor(parseFloat(prEl.value))));
     prEl.value = v; abEl.value = pd - v;
+    if (enlEl) enlEl.disabled = false;
+    if (oclEl) oclEl.disabled = false;
+    if (enlEl && oclEl && enlEl.value === '' && oclEl.value === '') { enlEl.value = pd - v; oclEl.value = 0; }
+    _resyncLeavesToAbsent(enlEl, oclEl, efEl, pd - v);
   } else if (source === 'absent' && prEl && abEl && abEl.value !== '') {
     const v = Math.min(pd, Math.max(0, Math.floor(parseFloat(abEl.value))));
     abEl.value = v; prEl.value = pd - v;
+    if (enlEl) enlEl.disabled = false;
+    if (oclEl) oclEl.disabled = false;
+    if (enlEl && oclEl && enlEl.value === '' && oclEl.value === '') { enlEl.value = v; oclEl.value = 0; }
+    _resyncLeavesToAbsent(enlEl, oclEl, efEl, v);
+  } else if (!source) {
+    // Init: enable/disable leaves based on whether absent is known
+    const hasAbsent = abEl && abEl.value !== '';
+    if (enlEl) enlEl.disabled = !hasAbsent;
+    if (oclEl) oclEl.disabled = !hasAbsent;
+  }
+
+  // Normal / On-call leave sync (normal + oncall = absent)
+  const absent = parseFloat(abEl?.value) || 0;
+  if (source === 'normal') {
+    if (enlEl && enlEl.value === '') {
+      if (oclEl) oclEl.value = '';
+    } else if (enlEl) {
+      const nl = Math.min(absent, Math.max(0, Math.floor(parseFloat(enlEl.value) || 0)));
+      enlEl.value = nl;
+      if (oclEl) oclEl.value = absent - nl;
+    }
+  } else if (source === 'oncall') {
+    if (oclEl && oclEl.value === '') {
+      if (enlEl) enlEl.value = '';
+    } else if (oclEl) {
+      const ocl = Math.min(absent, Math.max(0, Math.floor(parseFloat(oclEl.value) || 0)));
+      oclEl.value = ocl;
+      if (enlEl) enlEl.value = absent - ocl;
+    }
+  }
+
+  // Compute effectiveAbsent from leave fields
+  let effectiveAbsent = null;
+  const nlVal  = enlEl && enlEl.value !== '' ? Math.floor(parseFloat(enlEl.value)  || 0) : null;
+  const oclVal = oclEl && oclEl.value !== '' ? Math.floor(parseFloat(oclEl.value) || 0) : null;
+  if (nlVal !== null || oclVal !== null) {
+    const effOcl = Math.min(oclVal || 0, 2) + Math.max(0, (oclVal || 0) - 2) * 2;
+    effectiveAbsent = (nlVal || 0) + effOcl;
+    if (efEl) efEl.textContent = effectiveAbsent;
+  } else {
+    if (efEl) efEl.textContent = '—';
   }
 
   const present    = parseFloat(prEl?.value) || 0;
@@ -1434,7 +1632,9 @@ function calcEditRow(empId, month, source) {
 
   // Use snapshotted rates so editing attendance never alters historical rates
   const compDays = rec.compDays || 0;
-  const diff    = (present + compDays) - rec.workingDays;
+  const diff    = effectiveAbsent !== null
+    ? (pd - effectiveAbsent + compDays) - rec.workingDays
+    : (present + compDays) - rec.workingDays;
   const dayAdj  = diff * rec.daily;
   const basePay = rec.monthly + dayAdj;
   const otPay   = extraHours * rec.hourly;
@@ -1470,15 +1670,51 @@ async function saveMonthEdit(month) {
   const payroll = state.payrolls.find(p => p.month === month);
   if (!payroll) return;
 
-  const entries = payroll.records.map(r => ({
-    empId:        r.empId,
-    presentDays:  parseFloat(document.getElementById('epr-'  + r.empId)?.value) ?? r.presentDays,
-    absentDays:   parseFloat(document.getElementById('eab-'  + r.empId)?.value) ?? r.absentDays,
-    extraHours:   parseFloat(document.getElementById('ehr-'  + r.empId)?.value) || 0,
-    nightShifts:  parseFloat(document.getElementById('ens-'  + r.empId)?.value) || 0,
-    debitHours:   parseFloat(document.getElementById('edh-'  + r.empId)?.value) || 0,
-    debitAmount:  parseFloat(document.getElementById('edbt-' + r.empId)?.value) || 0,
-  }));
+  // Validate leave sums before building entries
+  const leaveErrors = [];
+  for (const r of payroll.records) {
+    const nlEl  = document.getElementById('enl-'  + r.empId);
+    const oclEl = document.getElementById('eocl-' + r.empId);
+    const abEl  = document.getElementById('eab-'  + r.empId);
+    const nl  = (nlEl  && !nlEl.disabled  && nlEl.value  !== '') ? parseFloat(nlEl.value)  : null;
+    const ocl = (oclEl && !oclEl.disabled && oclEl.value !== '') ? parseFloat(oclEl.value) : null;
+    const ab  = abEl ? (parseFloat(abEl.value) || 0) : 0;
+    if (ab > 0 && nl === null && ocl === null) {
+      leaveErrors.push(`${r.empName} (fill normal & on-call leaves — absent is ${ab})`);
+      if (nlEl)  nlEl.classList.add('missing');
+      if (oclEl) oclEl.classList.add('missing');
+    } else if (ab > 0 && (nl !== null || ocl !== null)) {
+      const leaveSum = (nl || 0) + (ocl || 0);
+      if (leaveSum !== ab) {
+        leaveErrors.push(`${r.empName} (normal + on-call = ${leaveSum}, must equal absent ${ab})`);
+        if (nlEl)  nlEl.classList.add('missing');
+        if (oclEl) oclEl.classList.add('missing');
+      } else {
+        if (nlEl)  nlEl.classList.remove('missing');
+        if (oclEl) oclEl.classList.remove('missing');
+      }
+    }
+  }
+  if (leaveErrors.length > 0) {
+    toast('Fix leave totals: ' + leaveErrors.join('; '), 'error');
+    return;
+  }
+
+  const entries = payroll.records.map(r => {
+    const nlEl  = document.getElementById('enl-'  + r.empId);
+    const oclEl = document.getElementById('eocl-' + r.empId);
+    return {
+      empId:        r.empId,
+      presentDays:  parseFloat(document.getElementById('epr-'  + r.empId)?.value) ?? r.presentDays,
+      absentDays:   parseFloat(document.getElementById('eab-'  + r.empId)?.value) ?? r.absentDays,
+      normalLeaves: (nlEl  && !nlEl.disabled  && nlEl.value  !== '') ? parseFloat(nlEl.value)   : null,
+      onCallLeaves: (oclEl && !oclEl.disabled && oclEl.value !== '') ? parseFloat(oclEl.value)  : null,
+      extraHours:   parseFloat(document.getElementById('ehr-'  + r.empId)?.value) || 0,
+      nightShifts:  parseFloat(document.getElementById('ens-'  + r.empId)?.value) || 0,
+      debitHours:   parseFloat(document.getElementById('edh-'  + r.empId)?.value) || 0,
+      debitAmount:  parseFloat(document.getElementById('edbt-' + r.empId)?.value) || 0,
+    };
+  });
 
   const btn = document.getElementById('eSaveBtn');
   if (btn) btn.disabled = true;
@@ -1520,6 +1756,12 @@ function toast(msg, type = 'info') {
 }
 
 init();
+
+document.addEventListener('wheel', e => {
+  if (document.activeElement && document.activeElement.type === 'number') {
+    document.activeElement.blur();
+  }
+}, { passive: true });
 </script>
 </body>
 </html>
