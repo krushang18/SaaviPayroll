@@ -282,9 +282,11 @@ tfoot td { background: var(--surface2); border-top: 2px solid var(--border2) !im
   animation: toastPop 0.2s ease; white-space: nowrap;
 }
 @keyframes toastPop { from { opacity:0; transform:translateY(-8px) scale(0.95); } to { opacity:1; transform:translateY(0) scale(1); } }
+@keyframes toastFade { from { opacity:1; transform:scale(1); } to { opacity:0; transform:scale(0.95); } }
 .toast.success { background: var(--ink); color: #fff; }
 .toast.error { background: var(--danger); color: #fff; }
 .toast.info { background: var(--ink); color: #fff; }
+.toast.removing { animation: toastFade 0.25s ease forwards; pointer-events: none; }
 
 hr.light { border: none; border-top: 1px solid var(--border); margin: 14px 0; }
 .period-info { font-size: 12px; color: var(--ink-3); margin-top: 5px; }
@@ -593,11 +595,15 @@ const MONTH_NAMES = ['January','February','March','April','May','June',
 const MS = ['','Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
 
 function inr(n) { return '₹' + Number(n).toLocaleString('en-IN', {minimumFractionDigits:0, maximumFractionDigits:2}); }
+function h(s) {
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+}
 function ci(name) { return name ? name.charCodeAt(0) % 6 : 0; }
 function ini(name) { return name ? name.split(' ').map(w => w[0]).join('').slice(0,2).toUpperCase() : '?'; }
 function fmtDate(s) {
   if (!s) return '?';
   const d = new Date(s + 'T00:00:00');
+  if (isNaN(d)) return '?';
   return d.getDate() + ' ' + MS[d.getMonth() + 1];
 }
 function periodDays(from, to) {
@@ -605,6 +611,7 @@ function periodDays(from, to) {
   return Math.round((d2 - d1) / 86400000) + 1;
 }
 function monthName(ym) {
+  if (!/^\d{4}-\d{2}$/.test(ym)) return ym;
   const [y, m] = ym.split('-');
   return MONTH_NAMES[parseInt(m) - 1] + ' ' + y;
 }
@@ -660,15 +667,15 @@ function renderEmployeeList() {
   } else {
     el.innerHTML = emps.map(e => `
       <div class="emp-row">
-        <div class="avatar av${ci(e.name)}">${ini(e.name)}</div>
-        <div class="emp-info-wrap" onclick="showProfile('${e.id}')">
-          <div class="emp-name">${e.name}</div>
-          <div class="emp-id">ID: ${e.id} &nbsp;·&nbsp; ${e.workingDays} working days${e.category ? ' &nbsp;·&nbsp; <span style="color:var(--accent);font-weight:600;">' + e.category + '</span>' : ''}</div>
+        <div class="avatar av${ci(e.name)}">${h(ini(e.name))}</div>
+        <div class="emp-info-wrap" data-empid="${h(e.id)}" onclick="showProfile(this.dataset.empid)">
+          <div class="emp-name">${h(e.name)}</div>
+          <div class="emp-id">ID: ${h(e.id)} &nbsp;·&nbsp; ${e.workingDays} working days${e.category ? ' &nbsp;·&nbsp; <span style="color:var(--accent);font-weight:600;">' + h(e.category) + '</span>' : ''}</div>
           <div class="emp-salary">${inr(e.monthly)} / month &nbsp;·&nbsp; ${inr(e.hourly)} / hr</div>
         </div>
         <div class="emp-actions">
-          <button class="icon-btn" onclick="openEditModal('${e.id}')">Edit</button>
-          <button class="icon-btn danger" onclick="openDeleteModal('${e.id}')">Delete</button>
+          <button class="icon-btn" data-empid="${h(e.id)}" onclick="openEditModal(this.dataset.empid)">Edit</button>
+          <button class="icon-btn danger" data-empid="${h(e.id)}" onclick="openDeleteModal(this.dataset.empid)">Delete</button>
         </div>
       </div>
     `).join('');
@@ -705,14 +712,14 @@ function showProfile(id) {
 
   document.getElementById('profileContent').innerHTML = `
     <div class="profile-hero">
-      <div class="avatar av${ci(emp.name)} profile-avatar">${ini(emp.name)}</div>
+      <div class="avatar av${ci(emp.name)} profile-avatar">${h(ini(emp.name))}</div>
       <div style="flex:1;min-width:0">
-        <div class="profile-name">${emp.name}</div>
-        <div class="profile-id">ID: ${emp.id}</div>
+        <div class="profile-name">${h(emp.name)}</div>
+        <div class="profile-id">ID: ${h(emp.id)}</div>
       </div>
       <div class="profile-actions">
-        <button class="icon-btn" onclick="openEditModal('${emp.id}')">Edit</button>
-        <button class="icon-btn danger" onclick="openDeleteModal('${emp.id}')">Delete</button>
+        <button class="icon-btn" data-empid="${h(emp.id)}" onclick="openEditModal(this.dataset.empid)">Edit</button>
+        <button class="icon-btn danger" data-empid="${h(emp.id)}" onclick="openDeleteModal(this.dataset.empid)">Delete</button>
       </div>
     </div>
     <div class="comp-grid">
@@ -762,7 +769,7 @@ function updateComputedDay() {
 function _populateCategorySelect(selectedValue) {
   const sel = document.getElementById('fCategory');
   sel.innerHTML = '<option value="">— None —</option>' +
-    state.categories.map(c => `<option value="${c.name}"${c.name === selectedValue ? ' selected' : ''}>${c.name}</option>`).join('');
+    state.categories.map(c => `<option value="${h(c.name)}"${c.name === selectedValue ? ' selected' : ''}>${h(c.name)}</option>`).join('');
 }
 
 function openAddModal() {
@@ -852,7 +859,7 @@ function renderCatList() {
   el.innerHTML = state.categories.map(c => `
     <div style="display:flex;align-items:center;gap:8px;padding:8px 0;border-bottom:1px solid var(--border);">
       <div style="flex:1;">
-        <div style="font-weight:600;font-size:14px;">${c.name}</div>
+        <div style="font-weight:600;font-size:14px;">${h(c.name)}</div>
         <div style="font-size:12px;color:var(--ink-3);">Night: ${inr(c.nightBase)} base + ${inr(c.nightAppr)} appr. = ${inr(c.nightBase + c.nightAppr)}/shift</div>
       </div>
       <button class="icon-btn" onclick="editCat(${c.id})">Edit</button>
@@ -964,32 +971,34 @@ function renderBulkTable() {
   // Check if employee rows already exist (preserve in-progress inputs)
   const existingIds = new Set([...tbody.querySelectorAll('tr')].map(r => r.id.slice(5)));
   const currentIds = new Set(sortedEmps.map(e => e.id));
-  const same = [...currentIds].every(id => existingIds.has(id)) && existingIds.size === currentIds.size;
-  if (same) return;
+  const sameIds = [...currentIds].every(id => existingIds.has(id)) && existingIds.size === currentIds.size;
+  const empHash = sortedEmps.map(e => `${e.id}|${e.name}|${e.monthly}|${e.hourly}|${e.workingDays}|${e.category}`).join('\n');
+  if (sameIds && tbody.dataset.empHash === empHash) return;
+  tbody.dataset.empHash = empHash;
 
   tbody.innerHTML = sortedEmps.map(e => `
-    <tr id="brow-${e.id}">
-      <td style="text-align:center;"><input type="checkbox" class="bRowCheck" id="bchk-${e.id}" checked onchange="updateGrandTotal()"></td>
-      <td class="td-mono">${e.id}</td>
+    <tr id="brow-${h(e.id)}">
+      <td style="text-align:center;"><input type="checkbox" class="bRowCheck" id="bchk-${h(e.id)}" checked onchange="updateGrandTotal()"></td>
+      <td class="td-mono">${h(e.id)}</td>
       <td style="white-space:nowrap;">
-        <div style="font-family:var(--sans);font-size:14px;font-weight:600;">${e.name}</div>
-        ${e.category ? `<div style="font-size:11px;color:var(--accent);font-weight:500;margin-top:1px;letter-spacing:0.3px;">${e.category}</div>` : ''}
+        <div style="font-family:var(--sans);font-size:14px;font-weight:600;">${h(e.name)}</div>
+        ${e.category ? `<div style="font-size:11px;color:var(--accent);font-weight:500;margin-top:1px;letter-spacing:0.3px;">${h(e.category)}</div>` : ''}
       </td>
       <td class="td-mono">${inr(e.monthly)}</td>
       <td class="td-mono">${inr(e.hourly)}</td>
       <td class="td-mono">${e.workingDays}</td>
-      <td><input type="number" class="bulk-input" id="bpr-${e.id}" min="0" max="31" placeholder="—" oninput="calcBulkRow('${e.id}','present')"></td>
-      <td><input type="number" class="bulk-input" id="bab-${e.id}" min="0" max="31" placeholder="—" oninput="calcBulkRow('${e.id}','absent')"></td>
-      <td><input type="number" class="bulk-input" id="bnl-${e.id}" min="0" placeholder="0" disabled oninput="calcBulkRow('${e.id}','normal')" style="border-color:rgba(230,126,34,0.4);"></td>
-      <td><input type="number" class="bulk-input" id="bocl-${e.id}" min="0" placeholder="0" disabled oninput="calcBulkRow('${e.id}','oncall')" style="border-color:rgba(230,126,34,0.4);"></td>
-      <td id="befl-${e.id}" style="font-size:12px;font-weight:500;white-space:nowrap;">—</td>
-      <td><input type="number" class="bulk-input" id="bhr-${e.id}" min="0" placeholder="0" oninput="calcBulkRow('${e.id}')"></td>
-      <td><input type="number" class="bulk-input" id="bns-${e.id}" min="0" placeholder="0" oninput="calcBulkRow('${e.id}')" style="border-color:rgba(100,100,200,0.4);"></td>
-      <td><input type="number" class="bulk-input" id="bdh-${e.id}" min="0" placeholder="0" oninput="calcBulkRow('${e.id}')" style="border-color:rgba(192,57,43,0.3);"></td>
-      <td><input type="number" class="bulk-input" id="bdbt-${e.id}" min="0" placeholder="0" oninput="calcBulkRow('${e.id}')" style="border-color:rgba(192,57,43,0.3);"></td>
-      <td id="badj-${e.id}" style="font-size:12px;font-weight:500;white-space:nowrap;">—</td>
-      <td id="bdbtamt-${e.id}" style="font-size:12px;font-weight:500;color:var(--danger);white-space:nowrap;">—</td>
-      <td id="btot-${e.id}" style="font-family:var(--num);font-size:13px;font-weight:600;color:var(--accent);white-space:nowrap;">—</td>
+      <td><input type="number" step="1" class="bulk-input" id="bpr-${h(e.id)}" min="0" max="31" placeholder="—" oninput="calcBulkRow(this.id.slice(4),'present')"></td>
+      <td><input type="number" step="1" class="bulk-input" id="bab-${h(e.id)}" min="0" max="31" placeholder="—" oninput="calcBulkRow(this.id.slice(4),'absent')"></td>
+      <td><input type="number" step="1" class="bulk-input" id="bnl-${h(e.id)}" min="0" placeholder="0" disabled oninput="calcBulkRow(this.id.slice(4),'normal')" style="border-color:rgba(230,126,34,0.4);"></td>
+      <td><input type="number" step="1" class="bulk-input" id="bocl-${h(e.id)}" min="0" placeholder="0" disabled oninput="calcBulkRow(this.id.slice(5),'oncall')" style="border-color:rgba(230,126,34,0.4);"></td>
+      <td id="befl-${h(e.id)}" style="font-size:12px;font-weight:500;white-space:nowrap;">—</td>
+      <td><input type="number" class="bulk-input" id="bhr-${h(e.id)}" min="0" placeholder="0" oninput="calcBulkRow(this.id.slice(4))"></td>
+      <td><input type="number" class="bulk-input" id="bns-${h(e.id)}" min="0" placeholder="0" oninput="calcBulkRow(this.id.slice(4))" style="border-color:rgba(100,100,200,0.4);"></td>
+      <td><input type="number" class="bulk-input" id="bdh-${h(e.id)}" min="0" placeholder="0" oninput="calcBulkRow(this.id.slice(4))" style="border-color:rgba(192,57,43,0.3);"></td>
+      <td><input type="number" class="bulk-input" id="bdbt-${h(e.id)}" min="0" placeholder="0" oninput="calcBulkRow(this.id.slice(5))" style="border-color:rgba(192,57,43,0.3);"></td>
+      <td id="badj-${h(e.id)}" style="font-size:12px;font-weight:500;white-space:nowrap;">—</td>
+      <td id="bdbtamt-${h(e.id)}" style="font-size:12px;font-weight:500;color:var(--danger);white-space:nowrap;">—</td>
+      <td id="btot-${h(e.id)}" style="font-family:var(--num);font-size:13px;font-weight:600;color:var(--accent);white-space:nowrap;">—</td>
     </tr>
   `).join('');
 }
@@ -1439,10 +1448,10 @@ function showMonthDetail(month) {
         <tbody>
           ${payroll.records.map(r => `
             <tr>
-              <td class="td-mono">${r.empId}</td>
+              <td class="td-mono">${h(r.empId)}</td>
               <td style="white-space:nowrap;">
-                <div class="td-primary">${r.empName}</div>
-                ${(()=>{ const emp=state.employees.find(e=>e.id===r.empId); return emp?.category?`<div style="font-size:11px;color:var(--accent);font-weight:500;margin-top:1px;letter-spacing:0.3px;">${emp.category}</div>`:''; })()}
+                <div class="td-primary">${h(r.empName)}</div>
+                ${(()=>{ const emp=state.employees.find(e=>e.id===r.empId); return emp?.category?`<div style="font-size:11px;color:var(--accent);font-weight:500;margin-top:1px;letter-spacing:0.3px;">${h(emp.category)}</div>`:''; })()}
               </td>
               <td class="td-mono">${inr(r.monthly)}</td>
               <td class="td-mono">${r.workingDays}</td>
@@ -1506,26 +1515,26 @@ function editMonthDetail(month) {
         <tbody>
           ${payroll.records.map(r => `
             <tr>
-              <td class="td-mono">${r.empId}</td>
+              <td class="td-mono">${h(r.empId)}</td>
               <td style="white-space:nowrap;">
-                <div style="font-family:var(--sans);font-size:14px;font-weight:600;">${r.empName}</div>
-                ${(()=>{ const emp=state.employees.find(e=>e.id===r.empId); return emp?.category?`<div style="font-size:11px;color:var(--accent);font-weight:500;margin-top:1px;letter-spacing:0.3px;">${emp.category}</div>`:''; })()}
+                <div style="font-family:var(--sans);font-size:14px;font-weight:600;">${h(r.empName)}</div>
+                ${(()=>{ const emp=state.employees.find(e=>e.id===r.empId); return emp?.category?`<div style="font-size:11px;color:var(--accent);font-weight:500;margin-top:1px;letter-spacing:0.3px;">${h(emp.category)}</div>`:''; })()}
               </td>
               <td class="td-mono">${inr(r.monthly)}</td>
               <td class="td-mono">${r.workingDays}</td>
-              <td><input type="number" class="bulk-input" id="epr-${r.empId}" value="${r.presentDays}" min="0" max="31" oninput="calcEditRow('${r.empId}','${month}','present')"></td>
-              <td><input type="number" class="bulk-input" id="eab-${r.empId}" value="${r.absentDays}" min="0" max="31" oninput="calcEditRow('${r.empId}','${month}','absent')"></td>
-              <td><input type="number" class="bulk-input" id="enl-${r.empId}" value="${r.normalLeaves ?? ''}" min="0" placeholder="0" ${r.normalLeaves == null ? 'disabled' : ''} oninput="calcEditRow('${r.empId}','${month}','normal')" style="border-color:rgba(230,126,34,0.4);"></td>
-              <td><input type="number" class="bulk-input" id="eocl-${r.empId}" value="${r.onCallLeaves ?? ''}" min="0" placeholder="0" ${r.onCallLeaves == null ? 'disabled' : ''} oninput="calcEditRow('${r.empId}','${month}','oncall')" style="border-color:rgba(230,126,34,0.4);"></td>
-              <td id="eefl-${r.empId}" style="font-size:12px;font-weight:500;white-space:nowrap;">—</td>
-              <td><input type="number" class="bulk-input" id="ehr-${r.empId}" value="${r.extraHours||0}" min="0" oninput="calcEditRow('${r.empId}','${month}')"></td>
-              <td><input type="number" class="bulk-input" id="ens-${r.empId}" value="${r.nightShifts||0}" min="0" oninput="calcEditRow('${r.empId}','${month}')" style="border-color:rgba(100,100,200,0.4);"></td>
-              <td><input type="number" class="bulk-input" id="edh-${r.empId}" value="${r.debitHours||0}" min="0" oninput="calcEditRow('${r.empId}','${month}')" style="border-color:rgba(192,57,43,0.3);"></td>
-              <td><input type="number" class="bulk-input" id="edbt-${r.empId}" value="${r.debitAmount||0}" min="0" oninput="calcEditRow('${r.empId}','${month}')" style="border-color:rgba(192,57,43,0.3);"></td>
-              <td id="eadj-${r.empId}" style="font-size:12px;font-weight:500;white-space:nowrap;">—</td>
-              <td id="eot-${r.empId}" style="font-size:12px;white-space:nowrap;">—</td>
-              <td id="edbtamt-${r.empId}" style="font-size:12px;font-weight:500;color:var(--danger);white-space:nowrap;">—</td>
-              <td id="etot-${r.empId}" style="font-family:var(--num);font-size:13px;font-weight:600;color:var(--accent);white-space:nowrap;">—</td>
+              <td><input type="number" step="1" class="bulk-input" id="epr-${h(r.empId)}" value="${r.presentDays}" min="0" max="31" oninput="calcEditRow(this.id.slice(4),'${month}','present')"></td>
+              <td><input type="number" step="1" class="bulk-input" id="eab-${h(r.empId)}" value="${r.absentDays}" min="0" max="31" oninput="calcEditRow(this.id.slice(4),'${month}','absent')"></td>
+              <td><input type="number" step="1" class="bulk-input" id="enl-${h(r.empId)}" value="${r.normalLeaves ?? ''}" min="0" placeholder="0" ${r.normalLeaves == null ? 'disabled' : ''} oninput="calcEditRow(this.id.slice(4),'${month}','normal')" style="border-color:rgba(230,126,34,0.4);"></td>
+              <td><input type="number" step="1" class="bulk-input" id="eocl-${h(r.empId)}" value="${r.onCallLeaves ?? ''}" min="0" placeholder="0" ${r.onCallLeaves == null ? 'disabled' : ''} oninput="calcEditRow(this.id.slice(5),'${month}','oncall')" style="border-color:rgba(230,126,34,0.4);"></td>
+              <td id="eefl-${h(r.empId)}" style="font-size:12px;font-weight:500;white-space:nowrap;">—</td>
+              <td><input type="number" class="bulk-input" id="ehr-${h(r.empId)}" value="${r.extraHours||0}" min="0" oninput="calcEditRow(this.id.slice(4),'${month}')"></td>
+              <td><input type="number" class="bulk-input" id="ens-${h(r.empId)}" value="${r.nightShifts||0}" min="0" oninput="calcEditRow(this.id.slice(4),'${month}')" style="border-color:rgba(100,100,200,0.4);"></td>
+              <td><input type="number" class="bulk-input" id="edh-${h(r.empId)}" value="${r.debitHours||0}" min="0" oninput="calcEditRow(this.id.slice(4),'${month}')" style="border-color:rgba(192,57,43,0.3);"></td>
+              <td><input type="number" class="bulk-input" id="edbt-${h(r.empId)}" value="${r.debitAmount||0}" min="0" oninput="calcEditRow(this.id.slice(5),'${month}')" style="border-color:rgba(192,57,43,0.3);"></td>
+              <td id="eadj-${h(r.empId)}" style="font-size:12px;font-weight:500;white-space:nowrap;">—</td>
+              <td id="eot-${h(r.empId)}" style="font-size:12px;white-space:nowrap;">—</td>
+              <td id="edbtamt-${h(r.empId)}" style="font-size:12px;font-weight:500;color:var(--danger);white-space:nowrap;">—</td>
+              <td id="etot-${h(r.empId)}" style="font-family:var(--num);font-size:13px;font-weight:600;color:var(--accent);white-space:nowrap;">—</td>
             </tr>
           `).join('')}
         </tbody>
@@ -1705,8 +1714,8 @@ async function saveMonthEdit(month) {
     const oclEl = document.getElementById('eocl-' + r.empId);
     return {
       empId:        r.empId,
-      presentDays:  parseFloat(document.getElementById('epr-'  + r.empId)?.value) ?? r.presentDays,
-      absentDays:   parseFloat(document.getElementById('eab-'  + r.empId)?.value) ?? r.absentDays,
+      presentDays:  (v => Number.isFinite(v) ? v : r.presentDays)(parseFloat(document.getElementById('epr-'  + r.empId)?.value)),
+      absentDays:   (v => Number.isFinite(v) ? v : r.absentDays) (parseFloat(document.getElementById('eab-'  + r.empId)?.value)),
       normalLeaves: (nlEl  && !nlEl.disabled  && nlEl.value  !== '') ? parseFloat(nlEl.value)   : null,
       onCallLeaves: (oclEl && !oclEl.disabled && oclEl.value !== '') ? parseFloat(oclEl.value)  : null,
       extraHours:   parseFloat(document.getElementById('ehr-'  + r.empId)?.value) || 0,
@@ -1751,17 +1760,23 @@ function toast(msg, type = 'info') {
   const el = document.createElement('div');
   el.className = `toast ${type}`;
   el.textContent = icons[type] + '  ' + msg;
+  el.addEventListener('click', () => removeToast(el));
   document.getElementById('toasts').appendChild(el);
-  setTimeout(() => el.remove(), 3500);
+  setTimeout(() => removeToast(el), 3500);
+}
+function removeToast(el) {
+  if (el.classList.contains('removing')) return;
+  el.classList.add('removing');
+  setTimeout(() => el.remove(), 260);
 }
 
 init();
 
 document.addEventListener('wheel', e => {
-  if (document.activeElement && document.activeElement.type === 'number') {
-    document.activeElement.blur();
+  if (e.target.type === 'number' && document.activeElement === e.target) {
+    e.preventDefault();
   }
-}, { passive: true });
+}, { passive: false });
 </script>
 </body>
 </html>

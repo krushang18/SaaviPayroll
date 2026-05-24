@@ -1,9 +1,9 @@
 from contextlib import asynccontextmanager
-from datetime import datetime, date
+from datetime import datetime, date, timezone
 from typing import Optional, List
-import math, os
+import math, os, re
 
-from fastapi import FastAPI, HTTPException, Depends
+from fastapi import FastAPI, HTTPException, Depends, Path
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field, field_validator, model_validator
 
@@ -18,7 +18,8 @@ if not _DB_URL:
 if _DB_URL.startswith("postgres://"):
     _DB_URL = _DB_URL.replace("postgres://", "postgresql://", 1)
 
-print(f"[DB] Connecting to PostgreSQL: {_DB_URL[:60]}...")
+_SAFE_URL = re.sub(r'://[^@]+@', '://***@', _DB_URL)
+print(f"[DB] Connecting to PostgreSQL: {_SAFE_URL[:60]}...")
 
 engine = create_engine(_DB_URL)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
@@ -94,16 +95,16 @@ async def lifespan(app: FastAPI):
     Base.metadata.create_all(bind=engine)
     with engine.connect() as conn:
         for sql in [
-            "ALTER TABLE payroll_records ADD COLUMN debit_hours REAL DEFAULT 0",
-            "ALTER TABLE payroll_records ADD COLUMN debit_hrs_pay REAL DEFAULT 0",
-            "ALTER TABLE employees ADD COLUMN category TEXT DEFAULT NULL",
-            "ALTER TABLE payroll_records ADD COLUMN night_shifts REAL DEFAULT 0",
-            "ALTER TABLE payroll_records ADD COLUMN night_base REAL DEFAULT 0",
-            "ALTER TABLE payroll_records ADD COLUMN night_appr REAL DEFAULT 0",
-            "ALTER TABLE payroll_records ADD COLUMN night_pay REAL DEFAULT 0",
-            "ALTER TABLE payroll_records ADD COLUMN normal_leaves REAL DEFAULT NULL",
-            "ALTER TABLE payroll_records ADD COLUMN on_call_leaves REAL DEFAULT NULL",
-            "ALTER TABLE payroll_records ADD COLUMN effective_oncall REAL DEFAULT NULL",
+            "ALTER TABLE payroll_records ADD COLUMN IF NOT EXISTS debit_hours REAL DEFAULT 0",
+            "ALTER TABLE payroll_records ADD COLUMN IF NOT EXISTS debit_hrs_pay REAL DEFAULT 0",
+            "ALTER TABLE employees ADD COLUMN IF NOT EXISTS category TEXT DEFAULT NULL",
+            "ALTER TABLE payroll_records ADD COLUMN IF NOT EXISTS night_shifts REAL DEFAULT 0",
+            "ALTER TABLE payroll_records ADD COLUMN IF NOT EXISTS night_base REAL DEFAULT 0",
+            "ALTER TABLE payroll_records ADD COLUMN IF NOT EXISTS night_appr REAL DEFAULT 0",
+            "ALTER TABLE payroll_records ADD COLUMN IF NOT EXISTS night_pay REAL DEFAULT 0",
+            "ALTER TABLE payroll_records ADD COLUMN IF NOT EXISTS normal_leaves REAL DEFAULT NULL",
+            "ALTER TABLE payroll_records ADD COLUMN IF NOT EXISTS on_call_leaves REAL DEFAULT NULL",
+            "ALTER TABLE payroll_records ADD COLUMN IF NOT EXISTS effective_oncall REAL DEFAULT NULL",
         ]:
             try:
                 conn.execute(text(sql))
@@ -116,11 +117,12 @@ async def lifespan(app: FastAPI):
 # ── App ───────────────────────────────────────────────────────────────────────
 app = FastAPI(title="Saavi Payroll API", version="3.0.0", lifespan=lifespan)
 
-CORS_ORIGINS = os.getenv("CORS_ORIGINS", "*").split(",")
+_raw_origins = os.getenv("CORS_ORIGINS", "")
+CORS_ORIGINS = [o.strip() for o in _raw_origins.split(",") if o.strip()] or ["*"]
 app.add_middleware(
     CORSMiddleware,
     allow_origins=CORS_ORIGINS,
-    allow_credentials=True,
+    allow_credentials=CORS_ORIGINS != ["*"],
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -240,8 +242,8 @@ class CategoryIn(BaseModel):
 
 class PayrollEntry(BaseModel):
     empId: str
-    presentDays:  Optional[float] = None
-    absentDays:   Optional[float] = None
+    presentDays:  Optional[float] = Field(default=None, ge=0)
+    absentDays:   Optional[float] = Field(default=None, ge=0)
     normalLeaves: Optional[float] = Field(default=None, ge=0)
     onCallLeaves: Optional[float] = Field(default=None, ge=0)
     extraHours:   float = Field(default=0, ge=0)
@@ -263,6 +265,28 @@ class PayrollIn(BaseModel):
         pd = _period_days(self.fromDate, self.toDate)
         if pd < 28 or pd > 31:
             raise ValueError(f'Pay period must be 28–31 days (got {pd})')
+        return self
+
+    @model_validator(mode='after')
+    def _check_entries(self):
+        try:
+            pd = _period_days(self.fromDate, self.toDate)
+        except Exception:
+            return self
+        for entry in self.entries:
+            if entry.presentDays is not None and entry.presentDays > pd:
+                raise ValueError(
+                    f'Employee {entry.empId}: presentDays ({entry.presentDays}) exceeds period length ({pd})'
+                )
+            if entry.absentDays is not None and entry.absentDays > pd:
+                raise ValueError(
+                    f'Employee {entry.empId}: absentDays ({entry.absentDays}) exceeds period length ({pd})'
+                )
+            if entry.presentDays is not None and entry.absentDays is not None and \
+               entry.presentDays + entry.absentDays > pd:
+                raise ValueError(
+                    f'Employee {entry.empId}: presentDays + absentDays exceeds period length ({pd})'
+                )
         return self
 
 
@@ -296,6 +320,14 @@ def _calc_record(emp: dict, fromDate: str, toDate: str,
     if onCallLeaves is not None or normalLeaves is not None:
         ocl = math.floor(onCallLeaves or 0)
         nl  = math.floor(normalLeaves or 0)
+        if absentDays is not None and nl + ocl != math.floor(absentDays):
+            raise ValueError(
+                f"{emp['name']}: normalLeaves + onCallLeaves ({nl + ocl}) must equal absentDays ({math.floor(absentDays)})"
+            )
+        if nl + ocl > pd:
+            raise ValueError(
+                f"{emp['name']}: leaves ({nl + ocl}) exceed period length ({pd})"
+            )
         effective_oncall = min(ocl, 2) + max(0, ocl - 2) * 2
         raw_absent = nl + ocl                               # real days off — for display
         effective_absent_for_salary = nl + effective_oncall  # penalized — for salary
@@ -578,7 +610,7 @@ def save_payroll(payload: PayrollIn, db: Session = Depends(get_db)):
             detail=f"Payroll for {payload.month} already exists. Use PUT to overwrite.",
         )
     result = _compute_payroll(payload, db)
-    saved_at = datetime.utcnow().isoformat()
+    saved_at = datetime.now(timezone.utc).isoformat()
     p = PayrollRow(
         month=payload.month,
         from_date=payload.fromDate,
@@ -600,8 +632,10 @@ def save_payroll(payload: PayrollIn, db: Session = Depends(get_db)):
 
 @app.put("/payrolls/{month}")
 def update_payroll(month: str, payload: PayrollIn, db: Session = Depends(get_db)):
+    if payload.month != month:
+        raise HTTPException(400, detail="month in URL must match payload")
     result = _compute_payroll(payload, db)
-    saved_at = datetime.utcnow().isoformat()
+    saved_at = datetime.now(timezone.utc).isoformat()
     p = db.query(PayrollRow).filter(PayrollRow.month == month).first()
     if p:
         p.from_date = payload.fromDate
@@ -612,16 +646,7 @@ def update_payroll(month: str, payload: PayrollIn, db: Session = Depends(get_db)
         p.saved_at = saved_at
         db.query(PayrollRecordRow).filter(PayrollRecordRow.payroll_month == month).delete()
     else:
-        p = PayrollRow(
-            month=month,
-            from_date=payload.fromDate,
-            to_date=payload.toDate,
-            comp_days=result["compDays"],
-            employee_count=result["employeeCount"],
-            total_pay=result["totalPay"],
-            saved_at=saved_at,
-        )
-        db.add(p)
+        raise HTTPException(404, detail="Payroll not found — use POST to create")
     _persist_records(result, db)
     db.commit()
     db.refresh(p)
@@ -632,7 +657,7 @@ def update_payroll(month: str, payload: PayrollIn, db: Session = Depends(get_db)
 
 
 @app.delete("/payrolls/{month}")
-def delete_payroll(month: str, db: Session = Depends(get_db)):
+def delete_payroll(month: str = Path(pattern=r"^\d{4}-\d{2}$"), db: Session = Depends(get_db)):
     p = db.query(PayrollRow).filter(PayrollRow.month == month).first()
     if not p:
         raise HTTPException(404, detail="Payroll not found")
