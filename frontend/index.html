@@ -229,29 +229,33 @@ tr:hover td { background: var(--accent-lt) !important; }
 .td-mono { font-size: 12px; color: var(--ink-2); font-family: var(--num); }
 .td-green { color: var(--accent); font-weight: 600; }
 tfoot td { background: var(--surface2); border-top: 2px solid var(--border2) !important; font-weight: 600; }
-/* column-group label row in payroll tables */
-.col-grp-hd { text-align:center; font-size:9px; letter-spacing:0.8px; padding:5px 16px 3px !important; text-transform:uppercase; font-weight:700; border-bottom:none !important; }
-.col-grp-attend { color:var(--accent); border-top:3px solid var(--accent); }
-.col-grp-leave  { color:var(--warn);   border-top:3px solid var(--warn);   }
-.col-grp-night  { color:#6a2da0;       border-top:3px solid #c5a8e8;       }
-.col-grp-pay    { color:var(--ink-2);  border-top:3px solid var(--border2); }
-.col-grp-total  { color:var(--accent); border-top:3px solid var(--accent); background:var(--accent-lt); }
-/* column-group vertical separators — view table (18 cols) */
-.payroll-detail-table tbody td:nth-child(4),
-.payroll-detail-table thead tr:last-child th:nth-child(4) { border-right:2px solid var(--border2); }
-.payroll-detail-table tbody td:nth-child(6),
-.payroll-detail-table thead tr:last-child th:nth-child(6) { border-right:2px solid var(--border2); }
-.payroll-detail-table tbody td:nth-child(9),
-.payroll-detail-table thead tr:last-child th:nth-child(9) { border-right:2px solid var(--border2); }
-.payroll-detail-table tbody td:nth-child(10),
-.payroll-detail-table thead tr:last-child th:nth-child(10) { border-right:2px solid var(--border2); }
-.payroll-detail-table tbody td:nth-child(12),
-.payroll-detail-table thead tr:last-child th:nth-child(12) { border-right:2px solid var(--border2); }
-.payroll-detail-table tbody td:nth-child(17),
-.payroll-detail-table thead tr:last-child th:nth-child(17) { border-right:2px solid var(--border2); }
-/* Let payroll tables size to content; overflow handled by .table-wrap-fit */
-.payroll-detail-table, .payroll-edit-table { width: max-content; min-width: 100%; }
-.payroll-detail-table td, .payroll-edit-table td, .payroll-detail-table th, .payroll-edit-table th { white-space: nowrap; }
+.payroll-detail-table {
+  width: 100%;
+  min-width: 1320px;
+  table-layout: fixed;
+}
+.payroll-detail-table th,
+.payroll-detail-table td { white-space: nowrap; }
+.payroll-detail-table th:not(:last-child),
+.payroll-detail-table td:not(:last-child) { border-right: 1px solid var(--border); }
+.payroll-detail-table th:nth-child(1), .payroll-detail-table td:nth-child(1) { width: 4%; }
+.payroll-detail-table th:nth-child(2), .payroll-detail-table td:nth-child(2) { width: 14%; }
+.payroll-detail-table th:nth-child(3), .payroll-detail-table td:nth-child(3) { width: 7%; }
+.payroll-detail-table th:nth-child(4), .payroll-detail-table td:nth-child(4) { width: 3.5%; }
+.payroll-detail-table th:nth-child(5), .payroll-detail-table td:nth-child(5) { width: 4.5%; }
+.payroll-detail-table th:nth-child(6), .payroll-detail-table td:nth-child(6) { width: 4.5%; }
+.payroll-detail-table th:nth-child(7), .payroll-detail-table td:nth-child(7) { width: 5%; }
+.payroll-detail-table th:nth-child(8), .payroll-detail-table td:nth-child(8) { width: 4.5%; }
+.payroll-detail-table th:nth-child(9), .payroll-detail-table td:nth-child(9) { width: 5%; }
+.payroll-detail-table th:nth-child(10), .payroll-detail-table td:nth-child(10) { width: 3.5%; }
+.payroll-detail-table th:nth-child(11), .payroll-detail-table td:nth-child(11) { width: 3.5%; }
+.payroll-detail-table th:nth-child(12), .payroll-detail-table td:nth-child(12) { width: 6.5%; }
+.payroll-detail-table th:nth-child(13), .payroll-detail-table td:nth-child(13) { width: 4%; }
+.payroll-detail-table th:nth-child(14), .payroll-detail-table td:nth-child(14) { width: 7.5%; }
+.payroll-detail-table th:nth-child(15), .payroll-detail-table td:nth-child(15) { width: 4.5%; }
+.payroll-detail-table th:nth-child(16), .payroll-detail-table td:nth-child(16) { width: 4.5%; }
+.payroll-detail-table th:nth-child(17), .payroll-detail-table td:nth-child(17) { width: 6.5%; }
+.payroll-detail-table th:nth-child(18), .payroll-detail-table td:nth-child(18) { width: 8%; }
 .payroll-edit-table {
   width: 100%;
   min-width: 0;
@@ -1517,18 +1521,9 @@ function showMonthDetail(month) {
         ${fmtDate(payroll.fromDate)} – ${fmtDate(payroll.toDate)} &nbsp;·&nbsp; ${payroll.employeeCount} employees${detailCompNote}
       </div>
     </div>
-    <div class="table-wrap-fit">
+    <div class="table-wrap">
       <table class="payroll-detail-table">
         <thead>
-          <tr>
-            <th colspan="4" class="col-grp-hd" style="border-right:2px solid var(--border2);"></th>
-            <th colspan="2" class="col-grp-hd col-grp-attend" style="border-right:2px solid var(--border2);">Attendance</th>
-            <th colspan="3" class="col-grp-hd col-grp-leave"  style="border-right:2px solid var(--border2);">Leaves</th>
-            <th colspan="1" class="col-grp-hd" style="border-right:2px solid var(--border2);"></th>
-            <th colspan="2" class="col-grp-hd col-grp-night"  style="border-right:2px solid var(--border2);">Night</th>
-            <th colspan="5" class="col-grp-hd col-grp-pay"    style="border-right:2px solid var(--border2);">Pay &amp; Deductions</th>
-            <th colspan="1" class="col-grp-hd col-grp-total">Net Pay</th>
-          </tr>
           <tr>
             <th style="min-width:44px;">ID</th>
             <th style="min-width:150px;">Employee</th>
@@ -1539,7 +1534,7 @@ function showMonthDetail(month) {
             <th style="min-width:88px;">Nml Leave</th>
             <th style="min-width:60px;">OnCall</th>
             <th style="min-width:76px;">Eff. Leave</th>
-            <th style="min-width:40px;">Hrs</th>
+            <th style="min-width:40px;">Ex. Hrs</th>
             <th style="min-width:50px;">Night</th>
             <th style="min-width:88px;">Night Pay</th>
             <th style="min-width:60px;">Dbt Hrs</th>
