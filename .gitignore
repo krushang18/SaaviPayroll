@@ -5,5 +5,7 @@ __pycache__/
 *.pyc
 .DS_Store
 .env
+.env.dev
 temp/
 sample/
+saavi_payroll_backup.sql

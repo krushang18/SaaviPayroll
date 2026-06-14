@@ -204,10 +204,10 @@ select {
   table-layout: auto;
 }
 .table-wrap-fit .bulk-input { width: 100%; min-width: 72px; box-sizing: border-box; }
-.table-wrap-edit { overflow-x: hidden; }
+.table-wrap-edit { overflow-x: auto; }
 .table-wrap-edit table {
   width: 100%;
-  min-width: 0;
+  min-width: 1350px;
   table-layout: fixed;
 }
 .table-wrap-edit .bulk-input {
@@ -219,6 +219,8 @@ select {
 .table-overlay-wrap { position: relative; }
 .table-overlay { display: none; position: absolute; inset: 0; z-index: 10; background: rgba(255,255,255,0.6); backdrop-filter: blur(3px); border-radius: var(--r); pointer-events: all; align-items: center; justify-content: center; }
 .table-overlay.active { display: flex; }
+.table-overlay-wrap .table-wrap { max-height: 65vh; overflow-y: auto; }
+#bulkTable thead th { position: sticky; top: 0; z-index: 5; background: var(--surface2); }
 table { width: 100%; border-collapse: collapse; min-width: 560px; }
 thead { background: var(--surface2); }
 th { padding: 12px 16px; text-align: left; font-size: 10px; letter-spacing: 1.5px; text-transform: uppercase; color: var(--ink-3); font-weight: 600; white-space: nowrap; border-bottom: 2px solid var(--border2); }
@@ -231,31 +233,34 @@ tr:hover td { background: var(--accent-lt) !important; }
 tfoot td { background: var(--surface2); border-top: 2px solid var(--border2) !important; font-weight: 600; }
 .payroll-detail-table {
   width: 100%;
-  min-width: 1320px;
+  min-width: 1600px;
   table-layout: fixed;
 }
 .payroll-detail-table th,
 .payroll-detail-table td { white-space: nowrap; }
 .payroll-detail-table th:not(:last-child),
 .payroll-detail-table td:not(:last-child) { border-right: 1px solid var(--border); }
-.payroll-detail-table th:nth-child(1), .payroll-detail-table td:nth-child(1) { width: 4%; }
-.payroll-detail-table th:nth-child(2), .payroll-detail-table td:nth-child(2) { width: 14%; }
-.payroll-detail-table th:nth-child(3), .payroll-detail-table td:nth-child(3) { width: 7%; }
-.payroll-detail-table th:nth-child(4), .payroll-detail-table td:nth-child(4) { width: 3.5%; }
-.payroll-detail-table th:nth-child(5), .payroll-detail-table td:nth-child(5) { width: 4.5%; }
-.payroll-detail-table th:nth-child(6), .payroll-detail-table td:nth-child(6) { width: 4.5%; }
-.payroll-detail-table th:nth-child(7), .payroll-detail-table td:nth-child(7) { width: 5%; }
-.payroll-detail-table th:nth-child(8), .payroll-detail-table td:nth-child(8) { width: 4.5%; }
-.payroll-detail-table th:nth-child(9), .payroll-detail-table td:nth-child(9) { width: 5%; }
-.payroll-detail-table th:nth-child(10), .payroll-detail-table td:nth-child(10) { width: 3.5%; }
-.payroll-detail-table th:nth-child(11), .payroll-detail-table td:nth-child(11) { width: 3.5%; }
-.payroll-detail-table th:nth-child(12), .payroll-detail-table td:nth-child(12) { width: 6.5%; }
-.payroll-detail-table th:nth-child(13), .payroll-detail-table td:nth-child(13) { width: 4%; }
-.payroll-detail-table th:nth-child(14), .payroll-detail-table td:nth-child(14) { width: 7.5%; }
-.payroll-detail-table th:nth-child(15), .payroll-detail-table td:nth-child(15) { width: 4.5%; }
-.payroll-detail-table th:nth-child(16), .payroll-detail-table td:nth-child(16) { width: 4.5%; }
-.payroll-detail-table th:nth-child(17), .payroll-detail-table td:nth-child(17) { width: 6.5%; }
-.payroll-detail-table th:nth-child(18), .payroll-detail-table td:nth-child(18) { width: 8%; }
+.payroll-detail-table th:nth-child(1), .payroll-detail-table td:nth-child(1) { width: 3.01%; }
+.payroll-detail-table th:nth-child(2), .payroll-detail-table td:nth-child(2) { width: 10.27%; }
+.payroll-detail-table th:nth-child(3), .payroll-detail-table td:nth-child(3) { width: 6.5%; }
+.payroll-detail-table th:nth-child(4), .payroll-detail-table td:nth-child(4) { width: 3.15%; }
+.payroll-detail-table th:nth-child(5), .payroll-detail-table td:nth-child(5) { width: 3.42%; }
+.payroll-detail-table th:nth-child(6), .payroll-detail-table td:nth-child(6) { width: 3.15%; }
+.payroll-detail-table th:nth-child(7), .payroll-detail-table td:nth-child(7) { width: 6.02%; }
+.payroll-detail-table th:nth-child(8), .payroll-detail-table td:nth-child(8) { width: 4.11%; }
+.payroll-detail-table th:nth-child(9), .payroll-detail-table td:nth-child(9) { width: 5.2%; }
+.payroll-detail-table th:nth-child(10), .payroll-detail-table td:nth-child(10) { width: 2.74%; }
+.payroll-detail-table th:nth-child(11), .payroll-detail-table td:nth-child(11) { width: 3.42%; }
+.payroll-detail-table th:nth-child(12), .payroll-detail-table td:nth-child(12) { width: 6.02%; }
+.payroll-detail-table th:nth-child(13), .payroll-detail-table td:nth-child(13) { width: 4.11%; }
+.payroll-detail-table th:nth-child(14), .payroll-detail-table td:nth-child(14) { width: 2.74%; }
+.payroll-detail-table th:nth-child(15), .payroll-detail-table td:nth-child(15) { width: 5.2%; }
+.payroll-detail-table th:nth-child(16), .payroll-detail-table td:nth-child(16) { width: 4.11%; }
+.payroll-detail-table th:nth-child(17), .payroll-detail-table td:nth-child(17) { width: 4.11%; }
+.payroll-detail-table th:nth-child(18), .payroll-detail-table td:nth-child(18) { width: 5.75%; }
+.payroll-detail-table th:nth-child(19), .payroll-detail-table td:nth-child(19) { width: 5.2%; }
+.payroll-detail-table th:nth-child(20), .payroll-detail-table td:nth-child(20) { width: 5.75%; }
+.payroll-detail-table th:nth-child(21), .payroll-detail-table td:nth-child(21) { width: 6.02%; }
 .payroll-edit-table {
   width: 100%;
   min-width: 0;
@@ -273,23 +278,27 @@ tfoot td { background: var(--surface2); border-top: 2px solid var(--border2) !im
 }
 .payroll-edit-table thead th,
 .payroll-edit-table tbody td { border-right: none !important; }
-.payroll-edit-table th:nth-child(1), .payroll-edit-table td:nth-child(1) { width: 4%; }
-.payroll-edit-table th:nth-child(2), .payroll-edit-table td:nth-child(2) { width: 13%; }
-.payroll-edit-table th:nth-child(3), .payroll-edit-table td:nth-child(3) { width: 8%; }
-.payroll-edit-table th:nth-child(4), .payroll-edit-table td:nth-child(4) { width: 3.5%; }
-.payroll-edit-table th:nth-child(5), .payroll-edit-table td:nth-child(5) { width: 6.5%; }
-.payroll-edit-table th:nth-child(6), .payroll-edit-table td:nth-child(6) { width: 6.5%; }
-.payroll-edit-table th:nth-child(7), .payroll-edit-table td:nth-child(7) { width: 5.5%; }
-.payroll-edit-table th:nth-child(8), .payroll-edit-table td:nth-child(8) { width: 5%; }
-.payroll-edit-table th:nth-child(9), .payroll-edit-table td:nth-child(9) { width: 5.5%; }
-.payroll-edit-table th:nth-child(10), .payroll-edit-table td:nth-child(10) { width: 4%; }
-.payroll-edit-table th:nth-child(11), .payroll-edit-table td:nth-child(11) { width: 4%; }
-.payroll-edit-table th:nth-child(12), .payroll-edit-table td:nth-child(12) { width: 4%; }
-.payroll-edit-table th:nth-child(13), .payroll-edit-table td:nth-child(13) { width: 4%; }
-.payroll-edit-table th:nth-child(14), .payroll-edit-table td:nth-child(14) { width: 8.5%; }
-.payroll-edit-table th:nth-child(15), .payroll-edit-table td:nth-child(15) { width: 4.5%; }
-.payroll-edit-table th:nth-child(16), .payroll-edit-table td:nth-child(16) { width: 7%; }
-.payroll-edit-table th:nth-child(17), .payroll-edit-table td:nth-child(17) { width: 7.5%; }
+.payroll-edit-table th:nth-child(1), .payroll-edit-table td:nth-child(1) { width: 3.28%; }
+.payroll-edit-table th:nth-child(2), .payroll-edit-table td:nth-child(2) { width: 10.34%; }
+.payroll-edit-table th:nth-child(3), .payroll-edit-table td:nth-child(3) { width: 7.24%; }
+.payroll-edit-table th:nth-child(4), .payroll-edit-table td:nth-child(4) { width: 3.28%; }
+.payroll-edit-table th:nth-child(5), .payroll-edit-table td:nth-child(5) { width: 3.45%; }
+.payroll-edit-table th:nth-child(6), .payroll-edit-table td:nth-child(6) { width: 3.45%; }
+.payroll-edit-table th:nth-child(7), .payroll-edit-table td:nth-child(7) { width: 4.83%; }
+.payroll-edit-table th:nth-child(8), .payroll-edit-table td:nth-child(8) { width: 4.31%; }
+.payroll-edit-table th:nth-child(9), .payroll-edit-table td:nth-child(9) { width: 4.48%; }
+.payroll-edit-table th:nth-child(10), .payroll-edit-table td:nth-child(10) { width: 2.76%; }
+.payroll-edit-table th:nth-child(11), .payroll-edit-table td:nth-child(11) { width: 3.1%; }
+.payroll-edit-table th:nth-child(12), .payroll-edit-table td:nth-child(12) { width: 3.62%; }
+.payroll-edit-table th:nth-child(13), .payroll-edit-table td:nth-child(13) { width: 2.93%; }
+.payroll-edit-table th:nth-child(14), .payroll-edit-table td:nth-child(14) { width: 3.62%; }
+.payroll-edit-table th:nth-child(15), .payroll-edit-table td:nth-child(15) { width: 5.86%; }
+.payroll-edit-table th:nth-child(16), .payroll-edit-table td:nth-child(16) { width: 3.45%; }
+.payroll-edit-table th:nth-child(17), .payroll-edit-table td:nth-child(17) { width: 5.86%; }
+.payroll-edit-table th:nth-child(18), .payroll-edit-table td:nth-child(18) { width: 5.17%; }
+.payroll-edit-table th:nth-child(19), .payroll-edit-table td:nth-child(19) { width: 5.86%; }
+.payroll-edit-table th:nth-child(20), .payroll-edit-table td:nth-child(20) { width: 6.9%; }
+.payroll-edit-table th:nth-child(21), .payroll-edit-table td:nth-child(21) { width: 6.21%; }
 .payroll-edit-table .edit-employee-cell { overflow: hidden; }
 .payroll-edit-table .edit-employee-name {
   overflow: hidden;
@@ -426,6 +435,7 @@ hr.light { border: none; border-top: 1px solid var(--border); margin: 14px 0; }
       <button class="dtab active" onclick="switchView('employees')">Employees</button>
       <button class="dtab" onclick="switchView('calculate')">Payroll</button>
       <button class="dtab" onclick="switchView('history')">History</button>
+      <button class="dtab" onclick="switchView('advances')">Advances</button>
     </nav>
     <button class="btn btn-primary btn-sm add-btn-header" onclick="openAddModal()">+ Add Employee</button>
   </div>
@@ -482,7 +492,7 @@ hr.light { border: none; border-top: 1px solid var(--border); margin: 14px 0; }
         <span style="font-size:13px;color:var(--ink-3);font-weight:500;">Set a valid pay period (28–31 days) to enter attendance</span>
       </div>
       <div class="table-wrap">
-        <table id="bulkTable" style="min-width:1300px;">
+        <table id="bulkTable" style="min-width:1480px;">
           <thead>
             <tr>
               <th style="width:36px;text-align:center;"><input type="checkbox" id="bSelectAll" checked onchange="toggleSelectAll(this.checked)" title="Select all"></th>
@@ -500,15 +510,19 @@ hr.light { border: none; border-top: 1px solid var(--border); margin: 14px 0; }
               <th>Night</th>
               <th>Dbt Hrs</th>
               <th>Debit</th>
+              <th>Late 15mins</th>
               <th>Day Adj</th>
               <th>Debit Amt</th>
+              <th>Late Ded</th>
+              <th>Adv Settle</th>
+              <th>Adv Balance</th>
               <th>Total</th>
             </tr>
           </thead>
           <tbody id="bulkBody"></tbody>
           <tfoot>
             <tr>
-              <td colspan="17" style="text-align:right;font-size:11px;letter-spacing:1px;text-transform:uppercase;color:var(--ink-3);padding-right:16px;">Grand Total</td>
+              <td colspan="21" style="text-align:right;font-size:11px;letter-spacing:1px;text-transform:uppercase;color:var(--ink-3);padding-right:16px;">Grand Total</td>
               <td id="bGrandTotal" style="font-family:var(--num);font-size:15px;font-weight:700;color:var(--accent);">—</td>
             </tr>
           </tfoot>
@@ -526,6 +540,20 @@ hr.light { border: none; border-top: 1px solid var(--border); margin: 14px 0; }
       <div><div class="page-title">History</div><div class="page-sub">Saved monthly payroll sheets</div></div>
     </div>
     <div id="payrollMonths"></div>
+  </div>
+
+  <!-- ADVANCES -->
+  <div class="view" id="view-advances">
+    <div class="page-top">
+      <div><div class="page-title">Advances</div><div class="page-sub">Track advance payments &amp; settlements</div></div>
+    </div>
+    <div class="form-group">
+      <label>Employee</label>
+      <input type="text" id="advEmpSearch" list="advEmpDatalist" placeholder="Search name or ID…" autocomplete="off" oninput="onAdvEmpSearchInput()" style="width:100%;padding:10px 12px;border:1px solid var(--border);border-radius:var(--r);font-size:14px;background:var(--surface);color:var(--ink);">
+      <datalist id="advEmpDatalist"></datalist>
+      <input type="hidden" id="advEmpSelect">
+    </div>
+    <div id="advanceDetail"></div>
   </div>
 
   <!-- MONTH DETAIL -->
@@ -546,6 +574,9 @@ hr.light { border: none; border-top: 1px solid var(--border); margin: 14px 0; }
   </button>
   <button class="bnav-btn" id="bnav-history" onclick="switchView('history')">
     <span class="bnav-icon">📋</span>History
+  </button>
+  <button class="bnav-btn" id="bnav-advances" onclick="switchView('advances')">
+    <span class="bnav-icon">💰</span>Advances
   </button>
 </nav>
 
@@ -642,8 +673,47 @@ hr.light { border: none; border-top: 1px solid var(--border); margin: 14px 0; }
   </div>
 </div>
 
+<!-- ADVANCE ADD/EDIT MODAL -->
+<div class="overlay" id="advModal">
+  <div class="modal">
+    <div class="modal-pill"></div>
+    <div class="modal-title" id="advModalTitle">Add Advance</div>
+    <div class="form-group">
+      <label>Date</label>
+      <input type="date" id="advDate">
+    </div>
+    <div class="form-group">
+      <label>Amount (₹)</label>
+      <input type="number" id="advAmount" min="0" placeholder="5000">
+    </div>
+    <div class="form-group">
+      <label>Note (optional)</label>
+      <input type="text" id="advNote" placeholder="e.g. Medical emergency">
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-outline" onclick="closeAdvModal()">Cancel</button>
+      <button class="btn btn-primary" onclick="saveAdvance()">Save</button>
+    </div>
+  </div>
+</div>
+
+<!-- ADVANCE DELETE MODAL -->
+<div class="overlay" id="advDeleteModal">
+  <div class="modal">
+    <div class="modal-pill"></div>
+    <div class="modal-title" style="color:var(--danger)">Delete Advance Entry</div>
+    <p style="font-size:14px;color:var(--ink-2);margin-bottom:8px;">Delete this advance entry of <strong id="advDelAmount" style="color:var(--ink)"></strong>?</p>
+    <div class="modal-footer">
+      <button class="btn btn-outline" onclick="closeAdvDeleteModal()">Cancel</button>
+      <button class="btn btn-danger-out" onclick="confirmAdvDelete()">Delete</button>
+    </div>
+  </div>
+</div>
+
 <div class="toasts" id="toasts"></div>
 
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.4/jspdf.plugin.autotable.min.js"></script>
 <script>
 // ── Config ────────────────────────────────────────────────────────────────────
 const API_BASE = (
@@ -652,7 +722,11 @@ const API_BASE = (
 ) ? 'http://localhost:8000' : '/api';
 
 // ── State ─────────────────────────────────────────────────────────────────────
-const state = { employees: [], payrolls: [], categories: [] };
+const state = { employees: [], payrolls: [], categories: [], advanceBalances: {} };
+
+function advBalance(empId) {
+  return (state.advanceBalances[empId] && state.advanceBalances[empId].balance) || 0;
+}
 
 // ── API helper ────────────────────────────────────────────────────────────────
 async function api(method, path, body) {
@@ -676,6 +750,9 @@ const MONTH_NAMES = ['January','February','March','April','May','June',
 const MS = ['','Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
 
 function inr(n) { return '₹' + Number(n).toLocaleString('en-IN', {minimumFractionDigits:0, maximumFractionDigits:2}); }
+function clampMax(el) {
+  if (el.value !== '' && el.max !== '' && Number(el.value) > Number(el.max)) el.value = el.max;
+}
 function h(s) {
   return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
 }
@@ -702,18 +779,27 @@ let currentView = 'employees';
 
 async function init() {
   try {
-    const [emps, payrolls, categories] = await Promise.all([
+    const [emps, payrolls, categories, balances] = await Promise.all([
       api('GET', '/employees'),
       api('GET', '/payrolls'),
       api('GET', '/categories'),
+      api('GET', '/advances/balances'),
     ]);
     state.employees = emps;
     state.payrolls = payrolls;
     state.categories = categories;
+    state.advanceBalances = Object.fromEntries(balances.map(b => [b.empId, b]));
   } catch(e) {
     toast('Could not reach server — is the backend running?', 'error');
   }
   renderEmployeeList();
+}
+
+async function refreshAdvanceBalances() {
+  try {
+    const balances = await api('GET', '/advances/balances');
+    state.advanceBalances = Object.fromEntries(balances.map(b => [b.empId, b]));
+  } catch(e) { /* non-fatal */ }
 }
 
 // ── Views ─────────────────────────────────────────────────────────────────────
@@ -723,24 +809,21 @@ function switchView(v) {
   document.querySelectorAll('.bnav-btn').forEach(b => b.classList.remove('active'));
   const nb = document.getElementById('bnav-' + v); if (nb) nb.classList.add('active');
   document.querySelectorAll('.dtab').forEach(t => t.classList.remove('active'));
-  const map = { employees: 0, calculate: 1, history: 2 };
+  const map = { employees: 0, calculate: 1, history: 2, advances: 3 };
   const tabs = document.querySelectorAll('.dtab');
   if (tabs[map[v]]) tabs[map[v]].classList.add('active');
   currentView = v;
   if (v === 'employees') renderEmployeeList();
   if (v === 'calculate') initBulkCalc();
   if (v === 'history') renderPayrollHistory();
+  if (v === 'advances') initAdvancesView();
   window.scrollTo(0, 0);
 }
 
 // ── Employees ─────────────────────────────────────────────────────────────────
 function renderEmployeeList() {
   const q = (document.getElementById('searchInput').value || '').toLowerCase();
-  const emps = [...state.employees]
-    .sort((a, b) => {
-      const ai = parseInt(a.id), bi = parseInt(b.id);
-      return (isNaN(ai) ? Infinity : ai) - (isNaN(bi) ? Infinity : bi) || a.id.localeCompare(b.id);
-    })
+  const emps = state.employees
     .filter(e => !q || e.name.toLowerCase().includes(q) || e.id.toLowerCase().includes(q));
   const el = document.getElementById('empList');
   if (!emps.length) {
@@ -838,6 +921,162 @@ function showProfile(id) {
   window.scrollTo(0, 0);
 }
 
+// ── Advances ──────────────────────────────────────────────────────────────────
+let editingAdvanceId = null, deletingAdvanceId = null, currentAdvanceHistory = null;
+
+function _advEmpLabel(e) { return `${e.name} (${e.id})`; }
+
+function initAdvancesView() {
+  const sel = document.getElementById('advEmpSelect');
+  const list = document.getElementById('advEmpDatalist');
+  list.innerHTML = state.employees.map(e => `<option value="${h(_advEmpLabel(e))}"></option>`).join('');
+  const current = state.employees.find(e => e.id === sel.value);
+  document.getElementById('advEmpSearch').value = current ? _advEmpLabel(current) : '';
+  if (!current) sel.value = '';
+  renderAdvanceDetail();
+}
+
+function onAdvEmpSearchInput() {
+  const input = document.getElementById('advEmpSearch');
+  const sel = document.getElementById('advEmpSelect');
+  const val = input.value.trim();
+  if (!val) {
+    if (sel.value !== '') { sel.value = ''; renderAdvanceDetail(); }
+    return;
+  }
+  const match = state.employees.find(e => _advEmpLabel(e) === val);
+  if (match && sel.value !== match.id) {
+    sel.value = match.id;
+    renderAdvanceDetail();
+  }
+}
+
+async function renderAdvanceDetail() {
+  const empId = document.getElementById('advEmpSelect').value;
+  const el = document.getElementById('advanceDetail');
+  currentAdvanceHistory = null;
+  if (!empId) {
+    el.innerHTML = `<div class="empty-state"><div class="empty-icon">💰</div><div class="empty-text">Select an employee</div><div class="empty-sub">View their advance balance and history</div></div>`;
+    return;
+  }
+  let data;
+  try {
+    data = await api('GET', '/advances/' + empId);
+  } catch(e) {
+    toast(e.message, 'error');
+    el.innerHTML = '';
+    return;
+  }
+  currentAdvanceHistory = data;
+  el.innerHTML = `
+    <div class="comp-grid">
+      <div class="comp-card"><div class="comp-label">Outstanding Balance</div><div class="comp-val" style="${data.balance > 0 ? 'color:var(--danger);' : ''}">${inr(data.balance)}</div></div>
+      <div class="comp-card"><div class="comp-label">Total Advanced</div><div class="comp-val">${inr(data.totalAdvanced)}</div></div>
+      <div class="comp-card"><div class="comp-label">Total Settled</div><div class="comp-val green">${inr(data.totalSettled)}</div></div>
+    </div>
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
+      <div style="font-family:var(--sans);font-size:20px;font-weight:700;">History</div>
+      <button class="btn btn-primary btn-sm" onclick="openAdvModal()">+ Add Advance</button>
+    </div>
+    ${data.entries.length ? `
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Date</th><th>Type</th><th>Amount</th><th>Note</th><th></th></tr></thead>
+          <tbody>
+            ${data.entries.map(e => e.type === 'given' ? `
+              <tr>
+                <td>${fmtDate(e.date)}</td>
+                <td><span class="badge badge-warm">Given</span></td>
+                <td class="td-mono">${inr(e.amount)}</td>
+                <td>${e.note ? h(e.note) : '—'}</td>
+                <td style="white-space:nowrap;">
+                  <button class="icon-btn" onclick="openAdvModal(${e.id})">Edit</button>
+                  <button class="icon-btn danger" onclick="openAdvDeleteModal(${e.id}, ${e.amount})">Del</button>
+                </td>
+              </tr>
+            ` : `
+              <tr>
+                <td>${fmtDate(e.date)}</td>
+                <td><span class="badge badge-green">Settled · ${monthName(e.month)}</span></td>
+                <td class="td-mono td-green">-${inr(e.amount)}</td>
+                <td>—</td>
+                <td></td>
+              </tr>
+            `).join('')}
+          </tbody>
+        </table>
+      </div>
+    ` : `<div class="empty-state"><div class="empty-icon">📄</div><div class="empty-text">No advance history yet</div></div>`}
+  `;
+}
+
+function openAdvModal(id) {
+  const empId = document.getElementById('advEmpSelect').value;
+  if (!empId) return;
+  editingAdvanceId = id || null;
+  if (editingAdvanceId && currentAdvanceHistory) {
+    const entry = currentAdvanceHistory.entries.find(e => e.type === 'given' && e.id === editingAdvanceId);
+    document.getElementById('advModalTitle').textContent = 'Edit Advance';
+    document.getElementById('advDate').value = entry ? entry.date : '';
+    document.getElementById('advAmount').value = entry ? entry.amount : '';
+    document.getElementById('advNote').value = (entry && entry.note) ? entry.note : '';
+  } else {
+    document.getElementById('advModalTitle').textContent = 'Add Advance';
+    document.getElementById('advDate').value = new Date().toISOString().slice(0, 10);
+    document.getElementById('advAmount').value = '';
+    document.getElementById('advNote').value = '';
+  }
+  document.getElementById('advModal').classList.add('open');
+}
+
+function closeAdvModal() { document.getElementById('advModal').classList.remove('open'); }
+
+async function saveAdvance() {
+  const empId = document.getElementById('advEmpSelect').value;
+  if (!empId) return;
+  const dateVal = document.getElementById('advDate').value;
+  const amount = parseFloat(document.getElementById('advAmount').value);
+  const note = document.getElementById('advNote').value.trim() || null;
+  if (!dateVal) { toast('Please select a date.', 'error'); return; }
+  if (isNaN(amount) || amount <= 0) { toast('Enter a valid amount.', 'error'); return; }
+  try {
+    if (editingAdvanceId) {
+      await api('PUT', '/advances/' + editingAdvanceId, { empId, date: dateVal, amount, note });
+      toast('Advance updated.', 'success');
+    } else {
+      await api('POST', '/advances', { empId, date: dateVal, amount, note });
+      toast('Advance added.', 'success');
+    }
+    closeAdvModal();
+    await refreshAdvanceBalances();
+    renderAdvanceDetail();
+  } catch(e) {
+    toast(e.message, 'error');
+  }
+}
+
+function openAdvDeleteModal(id, amount) {
+  deletingAdvanceId = id;
+  document.getElementById('advDelAmount').textContent = inr(amount);
+  document.getElementById('advDeleteModal').classList.add('open');
+}
+function closeAdvDeleteModal() { document.getElementById('advDeleteModal').classList.remove('open'); }
+
+async function confirmAdvDelete() {
+  try {
+    await api('DELETE', '/advances/' + deletingAdvanceId);
+    toast('Advance entry deleted.', 'info');
+    closeAdvDeleteModal();
+    await refreshAdvanceBalances();
+    renderAdvanceDetail();
+  } catch(e) {
+    toast(e.message, 'error');
+  }
+}
+
+document.getElementById('advModal').addEventListener('click', e => { if (e.target === e.currentTarget) closeAdvModal(); });
+document.getElementById('advDeleteModal').addEventListener('click', e => { if (e.target === e.currentTarget) closeAdvDeleteModal(); });
+
 // ── Employee Modal ────────────────────────────────────────────────────────────
 let editingId = null, deletingId = null;
 
@@ -897,8 +1136,8 @@ async function saveEmployee() {
       state.employees = state.employees.map(e => e.id === editingId ? updated : e);
       toast(name + ' updated.', 'success');
     } else {
-      const created = await api('POST', '/employees', empData);
-      state.employees.push(created);
+      await api('POST', '/employees', empData);
+      state.employees = await api('GET', '/employees');
       toast(name + ' added.', 'success');
     }
   } catch(e) {
@@ -1028,13 +1267,17 @@ document.getElementById('catModal').addEventListener('click', e => { if (e.targe
 // ── Bulk Payroll Entry ────────────────────────────────────────────────────────
 let bulkInitialized = false;
 
+function toLocalISODate(d) {
+  return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+}
+
 function initBulkCalc() {
   if (!bulkInitialized) {
     const now = new Date();
     const toD = new Date(now.getFullYear(), now.getMonth(), 25);
     const frD = new Date(toD.getFullYear(), toD.getMonth() - 1, 26);
-    document.getElementById('bCalcFrom').value = frD.toISOString().slice(0, 10);
-    document.getElementById('bCalcTo').value = toD.toISOString().slice(0, 10);
+    document.getElementById('bCalcFrom').value = toLocalISODate(frD);
+    document.getElementById('bCalcTo').value = toLocalISODate(toD);
     bulkInitialized = true;
   }
   renderBulkTable();
@@ -1043,12 +1286,7 @@ function initBulkCalc() {
 
 function renderBulkTable() {
   const tbody = document.getElementById('bulkBody');
-  // Always display in ascending numeric ID order
-  const sortedEmps = [...state.employees].sort((a, b) => {
-    const na = parseInt(a.id, 10), nb = parseInt(b.id, 10);
-    if (!isNaN(na) && !isNaN(nb)) return na - nb;
-    return a.id < b.id ? -1 : a.id > b.id ? 1 : 0;
-  });
+  const sortedEmps = state.employees;
   // Check if employee rows already exist (preserve in-progress inputs)
   const existingIds = new Set([...tbody.querySelectorAll('tr')].map(r => r.id.slice(5)));
   const currentIds = new Set(sortedEmps.map(e => e.id));
@@ -1068,17 +1306,21 @@ function renderBulkTable() {
       <td class="td-mono">${inr(e.monthly)}</td>
       <td class="td-mono">${inr(e.hourly)}</td>
       <td class="td-mono">${e.workingDays}</td>
-      <td><input type="number" step="1" class="bulk-input" id="bpr-${h(e.id)}" min="0" max="31" placeholder="—" oninput="calcBulkRow(this.id.slice(4),'present')"></td>
-      <td><input type="number" step="1" class="bulk-input" id="bab-${h(e.id)}" min="0" max="31" placeholder="—" oninput="calcBulkRow(this.id.slice(4),'absent')"></td>
-      <td><input type="number" step="1" class="bulk-input" id="bnl-${h(e.id)}" min="0" placeholder="0" disabled oninput="calcBulkRow(this.id.slice(4),'normal')" style="border-color:rgba(230,126,34,0.4);"></td>
-      <td><input type="number" step="1" class="bulk-input" id="bocl-${h(e.id)}" min="0" placeholder="0" disabled oninput="calcBulkRow(this.id.slice(5),'oncall')" style="border-color:rgba(230,126,34,0.4);"></td>
+      <td><input type="number" step="1" class="bulk-input" id="bpr-${h(e.id)}" min="0" max="31" placeholder="—" oninput="clampMax(this);calcBulkRow(this.id.slice(4),'present')" style="width:45px;"></td>
+      <td><input type="number" step="1" class="bulk-input" id="bab-${h(e.id)}" min="0" max="31" placeholder="—" oninput="clampMax(this);calcBulkRow(this.id.slice(4),'absent')" style="width:45px;"></td>
+      <td><input type="number" step="1" class="bulk-input" id="bnl-${h(e.id)}" min="0" max="99" placeholder="0" disabled oninput="clampMax(this);calcBulkRow(this.id.slice(4),'normal')" style="border-color:rgba(230,126,34,0.4);width:45px;"></td>
+      <td><input type="number" step="1" class="bulk-input" id="bocl-${h(e.id)}" min="0" max="99" placeholder="0" disabled oninput="clampMax(this);calcBulkRow(this.id.slice(5),'oncall')" style="border-color:rgba(230,126,34,0.4);width:45px;"></td>
       <td id="befl-${h(e.id)}" style="font-size:12px;font-weight:500;white-space:nowrap;">—</td>
-      <td><input type="number" class="bulk-input" id="bhr-${h(e.id)}" min="0" placeholder="0" oninput="calcBulkRow(this.id.slice(4))"></td>
-      <td><input type="number" class="bulk-input" id="bns-${h(e.id)}" min="0" placeholder="0" oninput="calcBulkRow(this.id.slice(4))" style="border-color:rgba(100,100,200,0.4);"></td>
-      <td><input type="number" class="bulk-input" id="bdh-${h(e.id)}" min="0" placeholder="0" oninput="calcBulkRow(this.id.slice(4))" style="border-color:rgba(192,57,43,0.3);"></td>
-      <td><input type="number" class="bulk-input" id="bdbt-${h(e.id)}" min="0" placeholder="0" oninput="calcBulkRow(this.id.slice(5))" style="border-color:rgba(192,57,43,0.3);"></td>
+      <td><input type="number" class="bulk-input" id="bhr-${h(e.id)}" min="0" max="999" placeholder="0" oninput="clampMax(this);calcBulkRow(this.id.slice(4))" style="width:55px;"></td>
+      <td><input type="number" class="bulk-input" id="bns-${h(e.id)}" min="0" max="99" placeholder="0" oninput="clampMax(this);calcBulkRow(this.id.slice(4))" style="border-color:rgba(100,100,200,0.4);width:45px;"></td>
+      <td><input type="number" class="bulk-input" id="bdh-${h(e.id)}" min="0" max="999" placeholder="0" oninput="clampMax(this);calcBulkRow(this.id.slice(4))" style="border-color:rgba(192,57,43,0.3);width:55px;"></td>
+      <td><input type="number" class="bulk-input" id="bdbt-${h(e.id)}" min="0" placeholder="0" oninput="calcBulkRow(this.id.slice(5))" style="border-color:rgba(192,57,43,0.3);width:45px;"></td>
+      <td><input type="number" step="1" class="bulk-input" id="blc-${h(e.id)}" min="0" max="99" placeholder="0" oninput="clampMax(this);calcBulkRow(this.id.slice(4))" style="border-color:rgba(192,57,43,0.3);width:45px;"></td>
       <td id="badj-${h(e.id)}" style="font-size:12px;font-weight:500;white-space:nowrap;">—</td>
       <td id="bdbtamt-${h(e.id)}" style="font-size:12px;font-weight:500;color:var(--danger);white-space:nowrap;">—</td>
+      <td id="blp-${h(e.id)}" style="font-size:12px;font-weight:500;color:var(--danger);white-space:nowrap;">—</td>
+      <td><input type="number" class="bulk-input" id="badv-${h(e.id)}" min="0" placeholder="0" oninput="calcBulkRow(this.id.slice(5))" style="border-color:rgba(46,134,222,0.4);width:70px;"></td>
+      <td id="bbal-${h(e.id)}" style="font-size:11px;font-weight:500;white-space:nowrap;color:var(--ink-3);">—</td>
       <td id="btot-${h(e.id)}" style="font-family:var(--num);font-size:13px;font-weight:600;color:var(--accent);white-space:nowrap;">—</td>
     </tr>
   `).join('');
@@ -1161,11 +1403,13 @@ function calcBulkRow(empId, source) {
   const to = document.getElementById('bCalcTo').value;
   const adjEl    = document.getElementById('badj-'    + empId);
   const dbtAmtEl = document.getElementById('bdbtamt-' + empId);
+  const lpEl     = document.getElementById('blp-'     + empId);
+  const balEl    = document.getElementById('bbal-'    + empId);
   const totEl    = document.getElementById('btot-'    + empId);
   if (!adjEl || !totEl) return;
 
   if (!from || !to || from > to) {
-    adjEl.textContent = '—'; if (dbtAmtEl) dbtAmtEl.textContent = '—'; totEl.textContent = '—';
+    adjEl.textContent = '—'; if (dbtAmtEl) dbtAmtEl.textContent = '—'; if (lpEl) lpEl.textContent = '—'; if (balEl) balEl.textContent = '—'; totEl.textContent = '—';
     updateGrandTotal(); return;
   }
 
@@ -1189,7 +1433,7 @@ function calcBulkRow(empId, source) {
     if (nlEl)  { nlEl.disabled  = true; nlEl.value  = ''; }
     if (oclEl) { oclEl.disabled = true; oclEl.value = ''; }
     if (efEl)  efEl.textContent = '—';
-    adjEl.textContent = '—'; if (dbtAmtEl) dbtAmtEl.textContent = '—'; totEl.textContent = '—';
+    adjEl.textContent = '—'; if (dbtAmtEl) dbtAmtEl.textContent = '—'; if (lpEl) lpEl.textContent = '—'; if (balEl) balEl.textContent = '—'; totEl.textContent = '—';
     updateGrandTotal(); return;
   }
 
@@ -1230,7 +1474,7 @@ function calcBulkRow(empId, source) {
   }
 
   if (isNaN(present) && isNaN(absent)) {
-    adjEl.textContent = '—'; if (dbtAmtEl) dbtAmtEl.textContent = '—'; totEl.textContent = '—';
+    adjEl.textContent = '—'; if (dbtAmtEl) dbtAmtEl.textContent = '—'; if (lpEl) lpEl.textContent = '—'; if (balEl) balEl.textContent = '—'; totEl.textContent = '—';
     updateGrandTotal(); return;
   }
 
@@ -1242,6 +1486,8 @@ function calcBulkRow(empId, source) {
   if (present < 0) {
     adjEl.textContent = '!'; adjEl.className = 'adj-negative';
     if (dbtAmtEl) dbtAmtEl.textContent = '!';
+    if (lpEl) lpEl.textContent = '!';
+    if (balEl) balEl.textContent = '!';
     totEl.textContent = '!';
     updateGrandTotal(); return;
   }
@@ -1287,6 +1533,10 @@ function calcBulkRow(empId, source) {
   const debitHours = dhEl && dhEl.value !== '' ? parseFloat(dhEl.value) || 0 : 0;
   const dbtEl = document.getElementById('bdbt-' + empId);
   const debitAmount = dbtEl && dbtEl.value !== '' ? parseFloat(dbtEl.value) || 0 : 0;
+  const lcEl = document.getElementById('blc-' + empId);
+  const lateCount = lcEl && lcEl.value !== '' ? Math.floor(parseFloat(lcEl.value) || 0) : 0;
+  const advEl = document.getElementById('badv-' + empId);
+  const advanceSettlement = advEl && advEl.value !== '' ? parseFloat(advEl.value) || 0 : 0;
   const diff = effectiveAbsent !== null
     ? (pd - effectiveAbsent + compDays) - wd
     : (present + compDays) - wd;
@@ -1296,12 +1546,27 @@ function calcBulkRow(empId, source) {
   const cat = state.categories.find(c => c.name === emp.category);
   const nightPay = nightShifts * ((cat ? cat.nightBase : 0) + (cat ? cat.nightAppr : 0));
   const debitHrsPay = debitHours * emp.hourly;
-  const total  = basePay + otPay + nightPay - debitAmount - debitHrsPay;
+  const latePenaltyUnits = Math.max(0, lateCount - 5);
+  const latePenalty = latePenaltyUnits * (emp.monthly <= 10000 ? 50 : 100);
+  const total  = basePay + otPay + nightPay - debitAmount - debitHrsPay - latePenalty - advanceSettlement;
 
   adjEl.textContent = (dayAdj >= 0 ? '+' : '') + inr(dayAdj);
   adjEl.className = dayAdj > 0 ? 'adj-positive' : dayAdj < 0 ? 'adj-negative' : '';
   const totalDebit = debitAmount + debitHrsPay;
   if (dbtAmtEl) dbtAmtEl.textContent = totalDebit > 0 ? '-' + inr(totalDebit) : '—';
+  if (lpEl) lpEl.textContent = latePenalty > 0 ? '-' + inr(latePenalty) : '—';
+  if (balEl) {
+    const savedAdv = parseFloat(advEl?.dataset.savedAdv || 0);
+    const available = advBalance(empId) + savedAdv;
+    const remaining = available - advanceSettlement;
+    if (advanceSettlement > available) {
+      balEl.innerHTML = `<span style="color:var(--danger);">Exceeds! Bal: ${inr(available)}</span>`;
+      if (advEl) advEl.classList.add('missing');
+    } else {
+      if (advEl) advEl.classList.remove('missing');
+      balEl.textContent = (available > 0 || advanceSettlement > 0) ? `Bal: ${inr(available)} → ${inr(remaining)}` : '—';
+    }
+  }
   totEl.textContent = inr(total);
 
   updateGrandTotal();
@@ -1354,6 +1619,10 @@ async function savePayroll() {
     const debitHours = dhEl && dhEl.value !== '' ? parseFloat(dhEl.value) || 0 : 0;
     const dbtEl = document.getElementById('bdbt-' + emp.id);
     const debitAmount = dbtEl && dbtEl.value !== '' ? parseFloat(dbtEl.value) || 0 : 0;
+    const lcEl = document.getElementById('blc-' + emp.id);
+    const lateCount = lcEl && lcEl.value !== '' ? parseFloat(lcEl.value) || 0 : 0;
+    const advEl = document.getElementById('badv-' + emp.id);
+    const advanceSettlement = advEl && advEl.value !== '' ? parseFloat(advEl.value) || 0 : 0;
 
     const ab = absentDays ?? 0;
     if (presentDays === null && absentDays === null && normalLeaves === null && onCallLeaves === null) {
@@ -1377,14 +1646,14 @@ async function savePayroll() {
         if (abEl)  abEl.classList.remove('missing');
         if (nlEl)  nlEl.classList.remove('missing');
         if (oclEl) oclEl.classList.remove('missing');
-        entries.push({ empId: emp.id, presentDays, absentDays, normalLeaves, onCallLeaves, extraHours, nightShifts, debitHours, debitAmount });
+        entries.push({ empId: emp.id, presentDays, absentDays, normalLeaves, onCallLeaves, extraHours, nightShifts, debitHours, debitAmount, lateCount, advanceSettlement });
       }
     } else {
       if (prEl)  prEl.classList.remove('missing');
       if (abEl)  abEl.classList.remove('missing');
       if (nlEl)  nlEl.classList.remove('missing');
       if (oclEl) oclEl.classList.remove('missing');
-      entries.push({ empId: emp.id, presentDays, absentDays, normalLeaves, onCallLeaves, extraHours, nightShifts, debitHours, debitAmount });
+      entries.push({ empId: emp.id, presentDays, absentDays, normalLeaves, onCallLeaves, extraHours, nightShifts, debitHours, debitAmount, advanceSettlement });
     }
   }
 
@@ -1407,6 +1676,7 @@ async function savePayroll() {
     } else {
       state.payrolls.push(saved);
     }
+    await refreshAdvanceBalances();
     toast('Payroll saved for ' + monthName(month) + '.', 'success');
     switchView('history');
   } catch(e) {
@@ -1449,6 +1719,10 @@ function loadExistingPayroll() {
     set('bns-'  + r.empId, r.nightShifts || 0);
     set('bdh-'  + r.empId, r.debitHours  || 0);
     set('bdbt-' + r.empId, r.debitAmount || 0);
+    set('blc-'  + r.empId, r.lateCount   || 0);
+    set('badv-' + r.empId, r.advanceSettlement || 0);
+    const advEl = document.getElementById('badv-' + r.empId);
+    if (advEl) advEl.dataset.savedAdv = r.advanceSettlement || 0;
     // Enable and fill leave fields from saved data
     const nlEl  = document.getElementById('bnl-'  + r.empId);
     const oclEl = document.getElementById('bocl-' + r.empId);
@@ -1538,10 +1812,13 @@ function showMonthDetail(month) {
             <th style="min-width:50px;">Night</th>
             <th style="min-width:88px;">Night Pay</th>
             <th style="min-width:60px;">Dbt Hrs</th>
+            <th style="min-width:40px;">Late</th>
             <th style="min-width:76px;">Day Adj</th>
             <th style="min-width:60px;">OT</th>
             <th style="min-width:60px;">Debit</th>
             <th style="min-width:84px;">Debit Amt</th>
+            <th style="min-width:76px;">Late Ded</th>
+            <th style="min-width:84px;">Adv Settle</th>
             <th style="min-width:88px;">Total</th>
           </tr>
         </thead>
@@ -1564,17 +1841,20 @@ function showMonthDetail(month) {
               <td>${r.nightShifts || 0}</td>
               <td style="color:var(--accent);font-weight:500;">${(r.nightPay||0)>0?'+'+inr(r.nightPay):'—'}</td>
               <td>${r.debitHours || 0}</td>
+              <td>${r.lateCount || 0}</td>
               <td class="${(r.dayAdj||0)>=0?'adj-positive':'adj-negative'}">${(r.dayAdj||0)>=0?'+':''}${inr(r.dayAdj||0)}</td>
               <td>${inr(r.otPay||0)}</td>
               <td style="color:var(--danger);font-weight:500;">${(r.debitAmount||0)>0?'-'+inr(r.debitAmount):'—'}</td>
               <td style="color:var(--danger);font-weight:500;">${((r.debitAmount||0)+(r.debitHrsPay||0))>0?'-'+inr((r.debitAmount||0)+(r.debitHrsPay||0)):'—'}</td>
+              <td style="color:var(--danger);font-weight:500;">${(r.latePenalty||0)>0?'-'+inr(r.latePenalty):'—'}</td>
+              <td style="color:var(--danger);font-weight:500;">${(r.advanceSettlement||0)>0?'-'+inr(r.advanceSettlement):'—'}</td>
               <td class="td-green" style="font-weight:700;">${inr(r.total)}</td>
             </tr>
           `).join('')}
         </tbody>
         <tfoot>
           <tr>
-            <td colspan="17" style="text-align:right;font-size:11px;letter-spacing:1px;text-transform:uppercase;color:var(--ink-3);padding-right:16px;">Grand Total</td>
+            <td colspan="20" style="text-align:right;font-size:11px;letter-spacing:1px;text-transform:uppercase;color:var(--ink-3);padding-right:16px;">Grand Total</td>
             <td style="font-family:var(--num);font-size:15px;font-weight:700;color:var(--accent);">${inr(payroll.totalPay)}</td>
           </tr>
         </tfoot>
@@ -1583,6 +1863,7 @@ function showMonthDetail(month) {
     <div style="height:16px;"></div>
     <div style="display:flex;gap:10px;">
       <button class="btn btn-outline" style="flex:1;" onclick="editMonthDetail('${payroll.month}')">Edit Payroll</button>
+      <button class="btn btn-outline" onclick="downloadMonthPDF('${payroll.month}')">Download PDF</button>
       <button class="btn btn-danger-out" onclick="deletePayroll('${payroll.month}')">Delete</button>
     </div>
   `;
@@ -1592,6 +1873,46 @@ function showMonthDetail(month) {
   document.querySelectorAll('.bnav-btn').forEach(b => b.classList.remove('active'));
   document.getElementById('bnav-history').classList.add('active');
   window.scrollTo(0, 0);
+}
+
+function downloadMonthPDF(month) {
+  const payroll = state.payrolls.find(p => p.month === month);
+  if (!payroll || !payroll.records) { toast('Payroll data not found.', 'error'); return; }
+
+  const doc = new jspdf.jsPDF();
+
+  doc.setFontSize(16);
+  doc.text(`${monthName(payroll.month)} Payroll`, 14, 16);
+  doc.setFontSize(10);
+  doc.text(`${fmtDate(payroll.fromDate)} - ${fmtDate(payroll.toDate)} | ${payroll.employeeCount} employees`, 14, 23);
+
+  const fmt = n => 'Rs. ' + Number(n || 0).toLocaleString('en-IN', { minimumFractionDigits: 0, maximumFractionDigits: 2 });
+  const fmtSigned = n => (n < 0 ? '-' : (n > 0 ? '+' : '')) + fmt(Math.abs(n));
+
+  const rows = payroll.records.map(r => {
+    const advance = r.advanceSettlement || 0;
+    const otherSettlements = (r.total || 0) - (r.monthly || 0) + advance;
+    return [
+      r.empId,
+      r.empName,
+      fmt(r.monthly),
+      advance > 0 ? '-' + fmt(advance) : '—',
+      fmtSigned(otherSettlements),
+      fmt(r.total)
+    ];
+  });
+
+  doc.autoTable({
+    startY: 30,
+    head: [['ID', 'Employee', 'Monthly Salary', 'Advance Settle', 'Other Settlements', 'Final Amount']],
+    body: rows,
+    foot: [['', 'Grand Total', '', '', '', fmt(payroll.totalPay)]],
+    styles: { fontSize: 9 },
+    headStyles: { fillColor: [46, 134, 222] },
+    footStyles: { fillColor: [240, 240, 240], textColor: [20, 20, 20], fontStyle: 'bold' }
+  });
+
+  doc.save(`Payroll_${payroll.month}.pdf`);
 }
 
 function editMonthDetail(month) {
@@ -1623,10 +1944,14 @@ function editMonthDetail(month) {
             <th style="min-width:32px;">Ex. Hrs</th>
             <th style="min-width:36px;">Night</th>
             <th style="min-width:42px;">Dbt Hrs</th>
+            <th style="min-width:34px;">Late</th>
             <th style="min-width:42px;">Debit</th>
             <th style="min-width:68px;">Day Adj</th>
             <th style="min-width:40px;">OT</th>
             <th style="min-width:68px;">Debit Amt</th>
+            <th style="min-width:60px;">Late Ded</th>
+            <th style="min-width:68px;">Adv Settle</th>
+            <th style="min-width:80px;">Balance</th>
             <th style="min-width:72px;">Total</th>
           </tr>
         </thead>
@@ -1642,23 +1967,27 @@ function editMonthDetail(month) {
               <td class="td-mono">${r.workingDays}</td>
               <td><input type="number" step="1" class="bulk-input" id="epr-${h(r.empId)}" value="${r.presentDays}" min="0" max="31" oninput="calcEditRow(this.id.slice(4),'${month}','present')"></td>
               <td><input type="number" step="1" class="bulk-input" id="eab-${h(r.empId)}" value="${r.absentDays}" min="0" max="31" oninput="calcEditRow(this.id.slice(4),'${month}','absent')"></td>
-              <td><input type="number" step="1" class="bulk-input" id="enl-${h(r.empId)}" value="${r.normalLeaves ?? ''}" min="0" placeholder="0" ${r.normalLeaves == null ? 'disabled' : ''} oninput="calcEditRow(this.id.slice(4),'${month}','normal')" style="border-color:rgba(230,126,34,0.4);"></td>
-              <td><input type="number" step="1" class="bulk-input" id="eocl-${h(r.empId)}" value="${r.onCallLeaves ?? ''}" min="0" placeholder="0" ${r.onCallLeaves == null ? 'disabled' : ''} oninput="calcEditRow(this.id.slice(5),'${month}','oncall')" style="border-color:rgba(230,126,34,0.4);"></td>
+              <td><input type="number" step="1" class="bulk-input" id="enl-${h(r.empId)}" value="${r.normalLeaves ?? ''}" min="0" max="99" placeholder="0" ${r.normalLeaves == null ? 'disabled' : ''} oninput="clampMax(this);calcEditRow(this.id.slice(4),'${month}','normal')" style="border-color:rgba(230,126,34,0.4);"></td>
+              <td><input type="number" step="1" class="bulk-input" id="eocl-${h(r.empId)}" value="${r.onCallLeaves ?? ''}" min="0" max="99" placeholder="0" ${r.onCallLeaves == null ? 'disabled' : ''} oninput="clampMax(this);calcEditRow(this.id.slice(5),'${month}','oncall')" style="border-color:rgba(230,126,34,0.4);"></td>
               <td id="eefl-${h(r.empId)}" style="font-size:12px;font-weight:500;white-space:nowrap;">—</td>
-              <td><input type="number" class="bulk-input" id="ehr-${h(r.empId)}" value="${r.extraHours||0}" min="0" oninput="calcEditRow(this.id.slice(4),'${month}')"></td>
-              <td><input type="number" class="bulk-input" id="ens-${h(r.empId)}" value="${r.nightShifts||0}" min="0" oninput="calcEditRow(this.id.slice(4),'${month}')" style="border-color:rgba(100,100,200,0.4);"></td>
-              <td><input type="number" class="bulk-input" id="edh-${h(r.empId)}" value="${r.debitHours||0}" min="0" oninput="calcEditRow(this.id.slice(4),'${month}')" style="border-color:rgba(192,57,43,0.3);"></td>
+              <td><input type="number" class="bulk-input" id="ehr-${h(r.empId)}" value="${r.extraHours||0}" min="0" max="999" oninput="clampMax(this);calcEditRow(this.id.slice(4),'${month}')"></td>
+              <td><input type="number" class="bulk-input" id="ens-${h(r.empId)}" value="${r.nightShifts||0}" min="0" max="99" oninput="clampMax(this);calcEditRow(this.id.slice(4),'${month}')" style="border-color:rgba(100,100,200,0.4);"></td>
+              <td><input type="number" class="bulk-input" id="edh-${h(r.empId)}" value="${r.debitHours||0}" min="0" max="999" oninput="clampMax(this);calcEditRow(this.id.slice(4),'${month}')" style="border-color:rgba(192,57,43,0.3);"></td>
+              <td><input type="number" step="1" class="bulk-input" id="elc-${h(r.empId)}" value="${r.lateCount||0}" min="0" max="99" oninput="clampMax(this);calcEditRow(this.id.slice(4),'${month}')" style="border-color:rgba(192,57,43,0.3);"></td>
               <td><input type="number" class="bulk-input" id="edbt-${h(r.empId)}" value="${r.debitAmount||0}" min="0" oninput="calcEditRow(this.id.slice(5),'${month}')" style="border-color:rgba(192,57,43,0.3);"></td>
               <td id="eadj-${h(r.empId)}" style="font-size:12px;font-weight:500;white-space:nowrap;">—</td>
               <td id="eot-${h(r.empId)}" style="font-size:12px;white-space:nowrap;">—</td>
               <td id="edbtamt-${h(r.empId)}" style="font-size:12px;font-weight:500;color:var(--danger);white-space:nowrap;">—</td>
+              <td id="elp-${h(r.empId)}" style="font-size:12px;font-weight:500;color:var(--danger);white-space:nowrap;">—</td>
+              <td><input type="number" class="bulk-input" id="eadv-${h(r.empId)}" value="${r.advanceSettlement||0}" min="0" oninput="calcEditRow(this.id.slice(5),'${month}')" style="border-color:rgba(46,134,222,0.4);"></td>
+              <td id="ebal-${h(r.empId)}" style="font-size:11px;font-weight:500;white-space:nowrap;color:var(--ink-3);">—</td>
               <td id="etot-${h(r.empId)}" style="font-family:var(--num);font-size:13px;font-weight:600;color:var(--accent);white-space:nowrap;">—</td>
             </tr>
           `).join('')}
         </tbody>
         <tfoot>
           <tr>
-            <td colspan="16" style="text-align:right;font-size:11px;letter-spacing:1px;text-transform:uppercase;color:var(--ink-3);padding-right:16px;">Grand Total</td>
+            <td colspan="20" style="text-align:right;font-size:11px;letter-spacing:1px;text-transform:uppercase;color:var(--ink-3);padding-right:16px;">Grand Total</td>
             <td id="eGrandTotal" style="font-family:var(--num);font-size:15px;font-weight:700;color:var(--accent);">—</td>
           </tr>
         </tfoot>
@@ -1756,6 +2085,9 @@ function calcEditRow(empId, month, source) {
   const nightShifts = parseFloat(document.getElementById('ens-' + empId)?.value) || 0;
   const debitHours = parseFloat(document.getElementById('edh-'  + empId)?.value) || 0;
   const debit      = parseFloat(document.getElementById('edbt-' + empId)?.value) || 0;
+  const lateCount  = Math.floor(parseFloat(document.getElementById('elc-' + empId)?.value) || 0);
+  const advEl = document.getElementById('eadv-' + empId);
+  const advanceSettlement = advEl && advEl.value !== '' ? parseFloat(advEl.value) || 0 : 0;
 
   // Use snapshotted rates so editing attendance never alters historical rates
   const compDays = rec.compDays || 0;
@@ -1767,11 +2099,15 @@ function calcEditRow(empId, month, source) {
   const otPay   = extraHours * rec.hourly;
   const nightPay = nightShifts * ((rec.nightBase || 0) + (rec.nightAppr || 0));
   const debitHrsPay = debitHours * rec.hourly;
-  const total   = basePay + otPay + nightPay - debit - debitHrsPay;
+  const latePenaltyUnits = Math.max(0, lateCount - 5);
+  const latePenalty = latePenaltyUnits * (rec.monthly <= 10000 ? 50 : 100);
+  const total   = basePay + otPay + nightPay - debit - debitHrsPay - latePenalty - advanceSettlement;
 
   const adjEl    = document.getElementById('eadj-'    + empId);
   const otEl     = document.getElementById('eot-'     + empId);
   const dbtAmtEl = document.getElementById('edbtamt-' + empId);
+  const lpEl     = document.getElementById('elp-'     + empId);
+  const balEl    = document.getElementById('ebal-'    + empId);
   const totEl    = document.getElementById('etot-'    + empId);
 
   if (adjEl) {
@@ -1781,6 +2117,18 @@ function calcEditRow(empId, month, source) {
   if (otEl)  otEl.textContent  = inr(otPay);
   const totalDebit = debit + debitHrsPay;
   if (dbtAmtEl) dbtAmtEl.textContent = totalDebit > 0 ? '-' + inr(totalDebit) : '—';
+  if (lpEl) lpEl.textContent = latePenalty > 0 ? '-' + inr(latePenalty) : '—';
+  if (balEl) {
+    const available = advBalance(empId) + (rec.advanceSettlement || 0);
+    const remaining = available - advanceSettlement;
+    if (advanceSettlement > available) {
+      balEl.innerHTML = `<span style="color:var(--danger);">Exceeds! Bal: ${inr(available)}</span>`;
+      if (advEl) advEl.classList.add('missing');
+    } else {
+      if (advEl) advEl.classList.remove('missing');
+      balEl.textContent = (available > 0 || advanceSettlement > 0) ? `Bal: ${inr(available)} → ${inr(remaining)}` : '—';
+    }
+  }
   if (totEl) totEl.textContent = inr(total);
 
   // Update grand total
@@ -1840,6 +2188,8 @@ async function saveMonthEdit(month) {
       nightShifts:  parseFloat(document.getElementById('ens-'  + r.empId)?.value) || 0,
       debitHours:   parseFloat(document.getElementById('edh-'  + r.empId)?.value) || 0,
       debitAmount:  parseFloat(document.getElementById('edbt-' + r.empId)?.value) || 0,
+      lateCount:    parseFloat(document.getElementById('elc-'  + r.empId)?.value) || 0,
+      advanceSettlement: parseFloat(document.getElementById('eadv-' + r.empId)?.value) || 0,
     };
   });
 
@@ -1853,6 +2203,7 @@ async function saveMonthEdit(month) {
       entries,
     });
     state.payrolls = state.payrolls.map(p => p.month === month ? updated : p);
+    await refreshAdvanceBalances();
     toast('Payroll updated for ' + monthName(month) + '.', 'success');
     showMonthDetail(month);
   } catch(e) {

@@ -7,7 +7,7 @@ from fastapi import FastAPI, HTTPException, Depends, Path
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field, field_validator, model_validator
 
-from sqlalchemy import create_engine, Column, String, Float, Integer, Index, text
+from sqlalchemy import create_engine, Column, String, Float, Integer, Index, text, func
 from sqlalchemy.orm import declarative_base, sessionmaker, Session
 
 # ── Database ──────────────────────────────────────────────────────────────────
@@ -43,6 +43,7 @@ class EmployeeRow(Base):
     hourly       = Column(Float,   nullable=False)
     working_days = Column(Integer, default=30)
     category     = Column(String,  nullable=True)
+    updated_at   = Column(String,  nullable=True)
 
 
 class PayrollRow(Base):
@@ -79,6 +80,7 @@ class PayrollRecordRow(Base):
     debit_amount  = Column(Float)
     debit_hours   = Column(Float, default=0)
     debit_hrs_pay = Column(Float, default=0)
+    advance_settlement = Column(Float, default=0)
     night_shifts     = Column(Float, default=0)
     night_base       = Column(Float, default=0)
     night_appr       = Column(Float, default=0)
@@ -86,7 +88,19 @@ class PayrollRecordRow(Base):
     normal_leaves    = Column(Float, nullable=True)
     on_call_leaves   = Column(Float, nullable=True)
     effective_oncall = Column(Float, nullable=True)
+    late_count       = Column(Float, default=0)
+    late_penalty     = Column(Float, default=0)
     total            = Column(Float)
+
+
+class AdvanceRow(Base):
+    __tablename__ = "advances"
+    id         = Column(Integer, primary_key=True, autoincrement=True)
+    emp_id     = Column(String, nullable=False, index=True)
+    date       = Column(String, nullable=False)   # "YYYY-MM-DD"
+    amount     = Column(Float, nullable=False)
+    note       = Column(String, nullable=True)
+    created_at = Column(String, nullable=True)
 
 
 # ── Lifespan ──────────────────────────────────────────────────────────────────
@@ -105,6 +119,10 @@ async def lifespan(app: FastAPI):
             "ALTER TABLE payroll_records ADD COLUMN IF NOT EXISTS normal_leaves REAL DEFAULT NULL",
             "ALTER TABLE payroll_records ADD COLUMN IF NOT EXISTS on_call_leaves REAL DEFAULT NULL",
             "ALTER TABLE payroll_records ADD COLUMN IF NOT EXISTS effective_oncall REAL DEFAULT NULL",
+            "ALTER TABLE employees ADD COLUMN IF NOT EXISTS updated_at TEXT",
+            "ALTER TABLE payroll_records ADD COLUMN IF NOT EXISTS late_count REAL DEFAULT 0",
+            "ALTER TABLE payroll_records ADD COLUMN IF NOT EXISTS late_penalty REAL DEFAULT 0",
+            "ALTER TABLE payroll_records ADD COLUMN IF NOT EXISTS advance_settlement REAL DEFAULT 0",
         ]:
             try:
                 conn.execute(text(sql))
@@ -137,6 +155,10 @@ def get_db():
 
 
 # ── Serialisation helpers ─────────────────────────────────────────────────────
+def _emp_sort_key(emp_id: str):
+    return (int(emp_id) if emp_id.isdigit() else float('inf'), emp_id)
+
+
 def _emp_dict(row: EmployeeRow) -> dict:
     return {
         "id":          row.id,
@@ -145,6 +167,7 @@ def _emp_dict(row: EmployeeRow) -> dict:
         "hourly":      row.hourly,
         "workingDays": row.working_days,
         "category":    row.category,
+        "updatedAt":   row.updated_at,
     }
 
 
@@ -176,6 +199,7 @@ def _record_dict(row: PayrollRecordRow) -> dict:
         "debitAmount":  row.debit_amount,
         "debitHours":   row.debit_hours or 0,
         "debitHrsPay":  row.debit_hrs_pay or 0,
+        "advanceSettlement": row.advance_settlement or 0,
         "nightShifts":  row.night_shifts or 0,
         "nightBase":       row.night_base or 0,
         "nightAppr":       row.night_appr or 0,
@@ -183,6 +207,8 @@ def _record_dict(row: PayrollRecordRow) -> dict:
         "normalLeaves":    row.normal_leaves,
         "onCallLeaves":    row.on_call_leaves,
         "effectiveOncall": row.effective_oncall,
+        "lateCount":       row.late_count or 0,
+        "latePenalty":     row.late_penalty or 0,
         "total":           row.total,
     }
 
@@ -198,6 +224,45 @@ def _payroll_dict(p: PayrollRow, records) -> dict:
         "records":       [_record_dict(r) for r in records],
         "savedAt":       p.saved_at,
     }
+
+
+def _advance_dict(row: AdvanceRow) -> dict:
+    return {"id": row.id, "empId": row.emp_id, "date": row.date, "amount": row.amount, "note": row.note}
+
+
+def _advance_balances(db: Session) -> dict:
+    """Returns {empId: {totalAdvanced, totalSettled, balance}} for employees with any advance activity."""
+    given = dict(db.query(AdvanceRow.emp_id, func.sum(AdvanceRow.amount))
+                    .group_by(AdvanceRow.emp_id).all())
+    settled = dict(db.query(PayrollRecordRow.emp_id, func.sum(PayrollRecordRow.advance_settlement))
+                      .group_by(PayrollRecordRow.emp_id).all())
+    out = {}
+    for emp_id in set(given) | set(settled):
+        g = given.get(emp_id, 0) or 0
+        s = settled.get(emp_id, 0) or 0
+        out[emp_id] = {"totalAdvanced": g, "totalSettled": s, "balance": g - s}
+    return out
+
+
+def _advance_history(emp_id: str, db: Session) -> dict:
+    advances = (db.query(AdvanceRow).filter(AdvanceRow.emp_id == emp_id)
+                  .order_by(AdvanceRow.date.desc()).all())
+    entries = [
+        {"type": "given", "id": a.id, "date": a.date, "amount": a.amount, "note": a.note}
+        for a in advances
+    ]
+    settled_rows = (db.query(PayrollRecordRow, PayrollRow)
+                       .join(PayrollRow, PayrollRecordRow.payroll_month == PayrollRow.month)
+                       .filter(PayrollRecordRow.emp_id == emp_id, PayrollRecordRow.advance_settlement > 0)
+                       .all())
+    for rec, p in settled_rows:
+        entries.append({
+            "type": "settled", "month": rec.payroll_month, "date": p.to_date,
+            "amount": rec.advance_settlement,
+        })
+    entries.sort(key=lambda e: e["date"], reverse=True)
+    bal = _advance_balances(db).get(emp_id, {"totalAdvanced": 0, "totalSettled": 0, "balance": 0})
+    return {"empId": emp_id, **bal, "entries": entries}
 
 
 # ── Pydantic models ───────────────────────────────────────────────────────────
@@ -240,16 +305,39 @@ class CategoryIn(BaseModel):
         return v
 
 
+class AdvanceIn(BaseModel):
+    empId: str     = Field(min_length=1)
+    date: str      = Field(min_length=1)   # "YYYY-MM-DD"
+    amount: float  = Field(gt=0)
+    note: Optional[str] = None
+
+    @field_validator('date')
+    @classmethod
+    def _valid_date(cls, v):
+        date.fromisoformat(v)
+        return v
+
+    @field_validator('note', mode='before')
+    @classmethod
+    def _strip_note(cls, v):
+        if isinstance(v, str):
+            v = v.strip()
+            return v or None
+        return v
+
+
 class PayrollEntry(BaseModel):
     empId: str
-    presentDays:  Optional[float] = Field(default=None, ge=0)
-    absentDays:   Optional[float] = Field(default=None, ge=0)
-    normalLeaves: Optional[float] = Field(default=None, ge=0)
-    onCallLeaves: Optional[float] = Field(default=None, ge=0)
-    extraHours:   float = Field(default=0, ge=0)
-    debitHours:   float = Field(default=0, ge=0)
+    presentDays:  Optional[float] = Field(default=None, ge=0, le=31)
+    absentDays:   Optional[float] = Field(default=None, ge=0, le=31)
+    normalLeaves: Optional[float] = Field(default=None, ge=0, le=99)
+    onCallLeaves: Optional[float] = Field(default=None, ge=0, le=99)
+    extraHours:   float = Field(default=0, ge=0, le=999)
+    debitHours:   float = Field(default=0, ge=0, le=999)
     debitAmount:  float = Field(default=0, ge=0)
-    nightShifts:  float = Field(default=0, ge=0)
+    nightShifts:  float = Field(default=0, ge=0, le=99)
+    lateCount:    float = Field(default=0, ge=0, le=99)
+    advanceSettlement: float = Field(default=0, ge=0)
 
 
 class PayrollIn(BaseModel):
@@ -309,7 +397,8 @@ def _calc_record(emp: dict, fromDate: str, toDate: str,
                  presentDays: Optional[float], absentDays: Optional[float],
                  extraHours: float, debitHours: float = 0, debitAmount: float = 0,
                  nightShifts: float = 0, nightBase: float = 0, nightAppr: float = 0,
-                 normalLeaves: Optional[float] = None, onCallLeaves: Optional[float] = None) -> dict:
+                 normalLeaves: Optional[float] = None, onCallLeaves: Optional[float] = None,
+                 lateCount: float = 0, advanceSettlement: float = 0) -> dict:
     pd = _period_days(fromDate, toDate)
     daily = math.floor(emp["monthly"] / 30)
     wd = emp.get("workingDays", 30)
@@ -364,7 +453,14 @@ def _calc_record(emp: dict, fromDate: str, toDate: str,
     otPay = extraHours * emp["hourly"]
     debitHrsPay = debitHours * emp["hourly"]
     nightPay = nightShifts * (nightBase + nightAppr)
-    total = basePay + otPay + nightPay - debitAmount - debitHrsPay
+
+    # Late policy: first 5 "late by 15 min" occurrences are free; each beyond that
+    # is penalised based on monthly salary
+    late_occurrences = math.floor(lateCount)
+    late_penalty_units = max(0, late_occurrences - 5)
+    latePenalty = late_penalty_units * (50 if emp["monthly"] <= 10000 else 100)
+
+    total = basePay + otPay + nightPay - debitAmount - debitHrsPay - latePenalty - advanceSettlement
 
     return {
         "empId":       emp["id"],
@@ -387,11 +483,14 @@ def _calc_record(emp: dict, fromDate: str, toDate: str,
         "normalLeaves":   normalLeaves,
         "onCallLeaves":   onCallLeaves,
         "effectiveOncall": effective_oncall,
+        "lateCount":      lateCount,
+        "latePenalty":    latePenalty,
         "diff":           diff,
         "dayAdj":         dayAdj,
         "basePay":        basePay,
         "otPay":          otPay,
         "debitAmount":    debitAmount,
+        "advanceSettlement": advanceSettlement,
         "total":          total,
     }
 
@@ -399,6 +498,15 @@ def _calc_record(emp: dict, fromDate: str, toDate: str,
 def _compute_payroll(payload: PayrollIn, db: Session) -> dict:
     records = []
     errors = []
+
+    given = dict(db.query(AdvanceRow.emp_id, func.sum(AdvanceRow.amount))
+                    .group_by(AdvanceRow.emp_id).all())
+    settled_other_months = dict(
+        db.query(PayrollRecordRow.emp_id, func.sum(PayrollRecordRow.advance_settlement))
+          .filter(PayrollRecordRow.payroll_month != payload.month)
+          .group_by(PayrollRecordRow.emp_id).all()
+    )
+
     for entry in payload.entries:
         row = db.query(EmployeeRow).filter(EmployeeRow.id == entry.empId).first()
         if not row:
@@ -406,12 +514,21 @@ def _compute_payroll(payload: PayrollIn, db: Session) -> dict:
             continue
         emp = _emp_dict(row)
         night_base, night_appr = _emp_night_rates(row, db)
+
+        available = (given.get(entry.empId, 0) or 0) - (settled_other_months.get(entry.empId, 0) or 0)
+        if entry.advanceSettlement > available:
+            errors.append(
+                f"{emp['name']}: advance settlement ({entry.advanceSettlement}) exceeds outstanding balance ({available})"
+            )
+            continue
+
         try:
             rec = _calc_record(emp, payload.fromDate, payload.toDate,
                                entry.presentDays, entry.absentDays,
                                entry.extraHours, entry.debitHours, entry.debitAmount,
                                entry.nightShifts, night_base, night_appr,
-                               entry.normalLeaves, entry.onCallLeaves)
+                               entry.normalLeaves, entry.onCallLeaves,
+                               entry.lateCount, entry.advanceSettlement)
             records.append(rec)
         except ValueError as e:
             errors.append(str(e))
@@ -453,6 +570,7 @@ def _persist_records(result: dict, db: Session):
             debit_amount=rec["debitAmount"],
             debit_hours=rec["debitHours"],
             debit_hrs_pay=rec["debitHrsPay"],
+            advance_settlement=rec.get("advanceSettlement", 0),
             night_shifts=rec["nightShifts"],
             night_base=rec["nightBase"],
             night_appr=rec["nightAppr"],
@@ -460,6 +578,8 @@ def _persist_records(result: dict, db: Session):
             normal_leaves=rec.get("normalLeaves"),
             on_call_leaves=rec.get("onCallLeaves"),
             effective_oncall=rec.get("effectiveOncall"),
+            late_count=rec.get("lateCount", 0),
+            late_penalty=rec.get("latePenalty", 0),
             total=rec["total"],
         ))
 
@@ -474,7 +594,7 @@ def health():
 @app.get("/employees")
 def list_employees(db: Session = Depends(get_db)):
     rows = db.query(EmployeeRow).all()
-    rows.sort(key=lambda e: (int(e.id) if e.id.isdigit() else float('inf'), e.id))
+    rows.sort(key=lambda e: _emp_sort_key(e.id))
     return [_emp_dict(e) for e in rows]
 
 
@@ -490,7 +610,8 @@ def create_employee(emp: Employee, db: Session = Depends(get_db)):
     _assert_category_exists(emp.category, db)
     row = EmployeeRow(id=emp.id, name=emp.name, monthly=emp.monthly,
                       hourly=emp.hourly, working_days=emp.workingDays,
-                      category=emp.category)
+                      category=emp.category,
+                      updated_at=datetime.now(timezone.utc).isoformat())
     db.add(row)
     db.commit()
     db.refresh(row)
@@ -508,6 +629,7 @@ def update_employee(emp_id: str, emp: Employee, db: Session = Depends(get_db)):
     row.hourly = emp.hourly
     row.working_days = emp.workingDays
     row.category = emp.category
+    row.updated_at = datetime.now(timezone.utc).isoformat()
     db.commit()
     db.refresh(row)
     return _emp_dict(row)
@@ -573,6 +695,61 @@ def delete_category(cat_id: int, db: Session = Depends(get_db)):
     return {"deleted": cat_id}
 
 
+# ── Advances ─────────────────────────────────────────────────────────────────
+@app.get("/advances/balances")
+def get_advance_balances(db: Session = Depends(get_db)):
+    balances = _advance_balances(db)
+    return [{"empId": emp_id, **v} for emp_id, v in balances.items()]
+
+
+@app.get("/advances/{emp_id}")
+def get_advance_history(emp_id: str, db: Session = Depends(get_db)):
+    if not db.query(EmployeeRow).filter(EmployeeRow.id == emp_id).first():
+        raise HTTPException(404, detail="Employee not found")
+    return _advance_history(emp_id, db)
+
+
+@app.post("/advances", status_code=201)
+def create_advance(adv: AdvanceIn, db: Session = Depends(get_db)):
+    if not db.query(EmployeeRow).filter(EmployeeRow.id == adv.empId).first():
+        raise HTTPException(404, detail="Employee not found")
+    row = AdvanceRow(emp_id=adv.empId, date=adv.date, amount=adv.amount, note=adv.note,
+                      created_at=datetime.now(timezone.utc).isoformat())
+    db.add(row)
+    db.commit()
+    db.refresh(row)
+    return _advance_dict(row)
+
+
+@app.put("/advances/{advance_id}")
+def update_advance(advance_id: int, adv: AdvanceIn, db: Session = Depends(get_db)):
+    row = db.query(AdvanceRow).filter(AdvanceRow.id == advance_id).first()
+    if not row:
+        raise HTTPException(404, detail="Advance entry not found")
+    row.date = adv.date
+    row.amount = adv.amount
+    row.note = adv.note
+    db.commit()
+    db.refresh(row)
+    return _advance_dict(row)
+
+
+@app.delete("/advances/{advance_id}")
+def delete_advance(advance_id: int, db: Session = Depends(get_db)):
+    row = db.query(AdvanceRow).filter(AdvanceRow.id == advance_id).first()
+    if not row:
+        raise HTTPException(404, detail="Advance entry not found")
+    balance = _advance_balances(db).get(row.emp_id, {"balance": 0})["balance"]
+    if row.amount > balance:
+        raise HTTPException(
+            400,
+            detail=f"Cannot delete — would make outstanding balance negative (current balance {balance})",
+        )
+    db.delete(row)
+    db.commit()
+    return {"deleted": advance_id}
+
+
 # ── Payrolls ──────────────────────────────────────────────────────────────────
 @app.get("/payrolls")
 def list_payrolls(db: Session = Depends(get_db)):
@@ -582,6 +759,7 @@ def list_payrolls(db: Session = Depends(get_db)):
         records = db.query(PayrollRecordRow).filter(
             PayrollRecordRow.payroll_month == p.month
         ).all()
+        records.sort(key=lambda r: _emp_sort_key(r.emp_id))
         result.append(_payroll_dict(p, records))
     return result
 
@@ -594,6 +772,7 @@ def get_payroll(month: str, db: Session = Depends(get_db)):
     records = db.query(PayrollRecordRow).filter(
         PayrollRecordRow.payroll_month == month
     ).all()
+    records.sort(key=lambda r: _emp_sort_key(r.emp_id))
     return _payroll_dict(p, records)
 
 
@@ -627,6 +806,7 @@ def save_payroll(payload: PayrollIn, db: Session = Depends(get_db)):
     records = db.query(PayrollRecordRow).filter(
         PayrollRecordRow.payroll_month == payload.month
     ).all()
+    records.sort(key=lambda r: _emp_sort_key(r.emp_id))
     return _payroll_dict(p, records)
 
 
@@ -653,6 +833,7 @@ def update_payroll(month: str, payload: PayrollIn, db: Session = Depends(get_db)
     records = db.query(PayrollRecordRow).filter(
         PayrollRecordRow.payroll_month == month
     ).all()
+    records.sort(key=lambda r: _emp_sort_key(r.emp_id))
     return _payroll_dict(p, records)
 
 
