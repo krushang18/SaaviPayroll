@@ -21,7 +21,11 @@ if _DB_URL.startswith("postgres://"):
 _SAFE_URL = re.sub(r'://[^@]+@', '://***@', _DB_URL)
 print(f"[DB] Connecting to PostgreSQL: {_SAFE_URL[:60]}...")
 
-engine = create_engine(_DB_URL)
+engine = create_engine(
+    _DB_URL,
+    pool_pre_ping=True,
+    pool_recycle=300,
+)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 Base = declarative_base()
 
