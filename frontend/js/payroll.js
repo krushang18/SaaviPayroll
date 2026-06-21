@@ -54,7 +54,7 @@ function payrollHeadHTML(cfg) {
       <th title="Night shifts worked">Night</th>
       <th title="Home visits">Home</th>
       <th title="Debit hours docked">Dbt Hrs</th>
-      <th title="Flat debit amount (₹)">Debit</th>
+      <th title="Flat debit amount (₹)">Fine</th>
       <th title="Count of 15-min late arrivals">Late 15mins</th>
       <th title="Pay adjustment for attendance vs working days">Day Adj</th>
       <th title="Total debit amount deducted">Debit Amt</th>

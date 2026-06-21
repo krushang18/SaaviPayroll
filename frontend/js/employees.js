@@ -40,7 +40,7 @@ function renderStats() {
 }
 
 // ── Profile ───────────────────────────────────────────────────────────────────
-function showProfile(id) {
+async function showProfile(id) {
   const emp = state.employees.find(e => e.id === id); if (!emp) return;
   const daily = Math.floor(emp.monthly / 30);
 
@@ -108,11 +108,77 @@ function showProfile(id) {
         </table>
       </div>
     ` : `<div class="empty-state"><div class="empty-icon">${icon('doc')}</div><div class="empty-text">No payroll records yet</div><div class="empty-sub">Save a monthly payroll to see records here</div></div>`}
+
+    <div class="legend collapsed" id="profileAdvanceLegend">
+      <div class="legend-head" onclick="document.getElementById('profileAdvanceLegend').classList.toggle('collapsed')">
+        <span>Advance History</span><span class="chev">▾</span>
+      </div>
+      <div class="legend-body" id="profileAdvanceBody">
+        <div style="grid-column:1/-1;"><div class="empty-sub">Loading…</div></div>
+      </div>
+    </div>
   `;
   document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
   document.getElementById('view-profile').classList.add('active');
   document.querySelectorAll('.bnav-btn').forEach(b => b.classList.remove('active'));
   window.scrollTo(0, 0);
+  renderProfileAdvanceHistory(id);
+}
+
+async function renderProfileAdvanceHistory(id) {
+  const body = document.getElementById('profileAdvanceBody');
+  if (!body) return;
+  let data;
+  try {
+    data = await api('GET', '/advances/' + id);
+  } catch (e) {
+    body.innerHTML = `<div class="empty-sub">Failed to load advance history.</div>`;
+    return;
+  }
+  if (document.getElementById('profileAdvanceBody') !== body) return; // profile switched away
+  if (!data.entries.length) {
+    body.innerHTML = `<div style="grid-column:1/-1;"><div class="empty-sub">No advance history yet</div></div>`;
+    return;
+  }
+  body.innerHTML = `
+    <div style="grid-column:1/-1;">
+      <div class="comp-grid" style="margin-bottom:16px;">
+        <div class="comp-card"><div class="comp-label">Outstanding Balance</div><div class="comp-val" style="${data.balance > 0 ? 'color:var(--danger);' : ''}">${inr(data.balance)}</div></div>
+        <div class="comp-card"><div class="comp-label">Total Advanced</div><div class="comp-val">${inr(data.totalAdvanced)}</div></div>
+        <div class="comp-card"><div class="comp-label">Total Settled</div><div class="comp-val green">${inr(data.totalSettled)}</div></div>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Date</th><th>Type</th><th>Amount</th><th>Note</th></tr></thead>
+          <tbody>
+            ${data.entries.map(e => {
+              if (e.type === 'given') return `
+              <tr>
+                <td>${fmtDate(e.date)}</td>
+                <td><span class="badge badge-warm">Given</span></td>
+                <td class="td-mono">${inr(e.amount)}</td>
+                <td>${e.note ? h(e.note) : '—'}</td>
+              </tr>`;
+              if (e.type === 'settled_manual') return `
+              <tr>
+                <td>${fmtDate(e.date)}</td>
+                <td><span class="badge badge-green">Settlement</span></td>
+                <td class="td-mono td-green">-${inr(e.amount)}</td>
+                <td>${e.note ? h(e.note) : '—'}</td>
+              </tr>`;
+              return `
+              <tr>
+                <td>${fmtDate(e.date)}</td>
+                <td><span class="badge badge-green">Settled · ${monthName(e.month)}</span></td>
+                <td class="td-mono td-green">-${inr(e.amount)}</td>
+                <td>—</td>
+              </tr>`;
+            }).join('')}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  `;
 }
 
 // ── Employee Modal ────────────────────────────────────────────────────────────
