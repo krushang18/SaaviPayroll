@@ -41,7 +41,7 @@ async function renderAdvanceDetail() {
   }
   let data;
   try {
-    data = await api('GET', '/advances/' + empId);
+    data = await api('GET', '/advances/' + empId + '?pay_type=' + state.payType);
   } catch(e) {
     toast(e.message, 'error');
     el.innerHTML = '';
@@ -136,10 +136,10 @@ async function saveAdvance() {
   if (isNaN(amount) || amount <= 0) { toast('Enter a valid amount.', 'error'); return; }
   try {
     if (editingAdvanceId) {
-      await api('PUT', '/advances/' + editingAdvanceId, { empId, date: dateVal, amount, note });
+      await api('PUT', '/advances/' + editingAdvanceId, { empId, date: dateVal, amount, note, payType: state.payType });
       toast('Advance updated.', 'success');
     } else {
-      await api('POST', '/advances', { empId, date: dateVal, amount, note });
+      await api('POST', '/advances', { empId, date: dateVal, amount, note, payType: state.payType });
       toast('Advance added.', 'success');
     }
     closeAdvModal();
@@ -159,7 +159,7 @@ function closeAdvDeleteModal() { document.getElementById('advDeleteModal').class
 
 async function confirmAdvDelete() {
   try {
-    await api('DELETE', '/advances/' + deletingAdvanceId);
+    await api('DELETE', '/advances/' + deletingAdvanceId + '?pay_type=' + state.payType);
     toast('Advance entry deleted.', 'info');
     closeAdvDeleteModal();
     await refreshAdvanceBalances();
@@ -227,10 +227,10 @@ async function saveAdvSettlement() {
   }
   try {
     if (editingSettlementId) {
-      await api('PUT', '/advance-settlements/' + editingSettlementId, { empId, date: dateVal, amount, note });
+      await api('PUT', '/advance-settlements/' + editingSettlementId, { empId, date: dateVal, amount, note, payType: state.payType });
       toast('Settlement updated.', 'success');
     } else {
-      await api('POST', '/advance-settlements', { empId, date: dateVal, amount, note });
+      await api('POST', '/advance-settlements', { empId, date: dateVal, amount, note, payType: state.payType });
       toast('Settlement recorded.', 'success');
     }
     closeAdvSettlementModal();
@@ -250,7 +250,7 @@ function closeAdvSettDeleteModal() { document.getElementById('advSettlementDelet
 
 async function confirmAdvSettDelete() {
   try {
-    await api('DELETE', '/advance-settlements/' + deletingSettlementId);
+    await api('DELETE', '/advance-settlements/' + deletingSettlementId + '?pay_type=' + state.payType);
     toast('Settlement entry deleted.', 'info');
     closeAdvSettDeleteModal();
     await refreshAdvanceBalances();

@@ -9,3 +9,5 @@ __pycache__/
 temp/
 sample/
 saavi_payroll_backup.sql
+backup_*.sql
+backendRun.txt

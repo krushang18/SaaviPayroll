@@ -130,7 +130,7 @@ async function renderProfileAdvanceHistory(id) {
   if (!body) return;
   let data;
   try {
-    data = await api('GET', '/advances/' + id);
+    data = await api('GET', '/advances/' + id + '?pay_type=' + state.payType);
   } catch (e) {
     body.innerHTML = `<div class="empty-sub">Failed to load advance history.</div>`;
     return;
@@ -378,7 +378,7 @@ function closeDeleteModal() { document.getElementById('deleteModal').classList.r
 
 async function confirmDelete() {
   try {
-    await api('DELETE', '/employees/' + deletingId);
+    await api('DELETE', '/employees/' + deletingId + '?pay_type=' + state.payType);
     state.employees = state.employees.filter(e => e.id !== deletingId);
     toast('Employee removed.', 'info');
     closeDeleteModal();

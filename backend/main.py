@@ -39,8 +39,10 @@ class CategoryRow(Base):
     night_appr = Column(Float,   default=0)
 
 
-class EmployeeRow(Base):
-    __tablename__ = "employees"
+# Salary and cash employees live in physically separate tables so they have
+# independent id namespaces (salary "11" and cash "11" no longer collide). The
+# columns are shared via a mixin so the two tables cannot drift apart.
+class _EmployeeCols:
     id             = Column(String,  primary_key=True)
     name           = Column(String,  nullable=False)
     monthly        = Column(Float,   nullable=False)
@@ -53,6 +55,14 @@ class EmployeeRow(Base):
     shift2_monthly = Column(Float,   nullable=True)
     shift2_hourly  = Column(Float,   nullable=True)
     pay_type       = Column(String,  default="salary", nullable=False)
+
+
+class EmployeeRow(_EmployeeCols, Base):
+    __tablename__ = "employees"
+
+
+class CashEmployeeRow(_EmployeeCols, Base):
+    __tablename__ = "cash_employees"
 
 
 class PayrollRow(Base):
@@ -128,24 +138,31 @@ class PayrollRecordRow(Base):
     shift2_total            = Column(Float, nullable=True)
 
 
-class AdvanceRow(Base):
+# Advances and settlements are also split per pay-type so a cash employee's
+# advance history can never bleed into a salary employee with the same id.
+class _AdvanceCols:
+    id         = Column(Integer, primary_key=True, autoincrement=True)
+    emp_id     = Column(String, nullable=False, index=True)
+    date       = Column(String, nullable=False)   # "YYYY-MM-DD"
+    amount     = Column(Float, nullable=False)
+    note       = Column(String, nullable=True)
+    created_at = Column(String, nullable=True)
+
+
+class AdvanceRow(_AdvanceCols, Base):
     __tablename__ = "advances"
-    id         = Column(Integer, primary_key=True, autoincrement=True)
-    emp_id     = Column(String, nullable=False, index=True)
-    date       = Column(String, nullable=False)   # "YYYY-MM-DD"
-    amount     = Column(Float, nullable=False)
-    note       = Column(String, nullable=True)
-    created_at = Column(String, nullable=True)
 
 
-class AdvanceSettlementRow(Base):
+class CashAdvanceRow(_AdvanceCols, Base):
+    __tablename__ = "cash_advances"
+
+
+class AdvanceSettlementRow(_AdvanceCols, Base):
     __tablename__ = "advance_settlements"
-    id         = Column(Integer, primary_key=True, autoincrement=True)
-    emp_id     = Column(String, nullable=False, index=True)
-    date       = Column(String, nullable=False)   # "YYYY-MM-DD"
-    amount     = Column(Float, nullable=False)
-    note       = Column(String, nullable=True)
-    created_at = Column(String, nullable=True)
+
+
+class CashAdvanceSettlementRow(_AdvanceCols, Base):
+    __tablename__ = "cash_advance_settlements"
 
 
 class AppSettingsRow(Base):
@@ -239,6 +256,19 @@ def get_db():
         yield db
     finally:
         db.close()
+
+
+# ── Pay-type model resolvers ──────────────────────────────────────────────────
+# Salary and cash records live in separate tables; the route logic is otherwise
+# identical, so it just resolves the right model from the pay-type string.
+def _emp_model(pay_type: str):
+    return CashEmployeeRow if pay_type == "cash" else EmployeeRow
+
+def _adv_model(pay_type: str):
+    return CashAdvanceRow if pay_type == "cash" else AdvanceRow
+
+def _settle_model(pay_type: str):
+    return CashAdvanceSettlementRow if pay_type == "cash" else AdvanceSettlementRow
 
 
 # ── Serialisation helpers ─────────────────────────────────────────────────────
@@ -355,15 +385,17 @@ def _advance_settlement_dict(row: AdvanceSettlementRow) -> dict:
     return {"id": row.id, "empId": row.emp_id, "date": row.date, "amount": row.amount, "note": row.note}
 
 
-def _advance_balances(db: Session, emp_ids: list = None) -> dict:
+def _advance_balances(db: Session, pay_type: str = "salary", emp_ids: list = None) -> dict:
     """Returns {empId: {totalAdvanced, totalSettled, balance}} for employees with any advance activity."""
-    q_given = db.query(AdvanceRow.emp_id, func.sum(AdvanceRow.amount)).group_by(AdvanceRow.emp_id)
-    q_payroll = db.query(PayrollRecordRow.emp_id, func.sum(PayrollRecordRow.advance_settlement)).group_by(PayrollRecordRow.emp_id)
-    q_manual = db.query(AdvanceSettlementRow.emp_id, func.sum(AdvanceSettlementRow.amount)).group_by(AdvanceSettlementRow.emp_id)
+    Adv, Settle = _adv_model(pay_type), _settle_model(pay_type)
+    q_given = db.query(Adv.emp_id, func.sum(Adv.amount)).group_by(Adv.emp_id)
+    q_payroll = (db.query(PayrollRecordRow.emp_id, func.sum(PayrollRecordRow.advance_settlement))
+                   .filter(PayrollRecordRow.pay_type == pay_type).group_by(PayrollRecordRow.emp_id))
+    q_manual = db.query(Settle.emp_id, func.sum(Settle.amount)).group_by(Settle.emp_id)
     if emp_ids is not None:
-        q_given = q_given.filter(AdvanceRow.emp_id.in_(emp_ids))
+        q_given = q_given.filter(Adv.emp_id.in_(emp_ids))
         q_payroll = q_payroll.filter(PayrollRecordRow.emp_id.in_(emp_ids))
-        q_manual = q_manual.filter(AdvanceSettlementRow.emp_id.in_(emp_ids))
+        q_manual = q_manual.filter(Settle.emp_id.in_(emp_ids))
     given = dict(q_given.all())
     settled_payroll = dict(q_payroll.all())
     settled_manual = dict(q_manual.all())
@@ -376,9 +408,10 @@ def _advance_balances(db: Session, emp_ids: list = None) -> dict:
     return out
 
 
-def _advance_history(emp_id: str, db: Session) -> dict:
-    advances = (db.query(AdvanceRow).filter(AdvanceRow.emp_id == emp_id)
-                  .order_by(AdvanceRow.date.desc()).all())
+def _advance_history(emp_id: str, db: Session, pay_type: str = "salary") -> dict:
+    Adv, Settle = _adv_model(pay_type), _settle_model(pay_type)
+    advances = (db.query(Adv).filter(Adv.emp_id == emp_id)
+                  .order_by(Adv.date.desc()).all())
     entries = [
         {"type": "given", "id": a.id, "date": a.date, "amount": a.amount, "note": a.note}
         for a in advances
@@ -387,22 +420,24 @@ def _advance_history(emp_id: str, db: Session) -> dict:
                        .join(PayrollRow, and_(
                            PayrollRecordRow.payroll_month == PayrollRow.month,
                            PayrollRecordRow.pay_type == PayrollRow.pay_type))
-                       .filter(PayrollRecordRow.emp_id == emp_id, PayrollRecordRow.advance_settlement > 0)
+                       .filter(PayrollRecordRow.emp_id == emp_id,
+                               PayrollRecordRow.pay_type == pay_type,
+                               PayrollRecordRow.advance_settlement > 0)
                        .all())
     for rec, p in settled_rows:
         entries.append({
             "type": "settled", "month": rec.payroll_month, "date": p.to_date,
             "amount": rec.advance_settlement,
         })
-    manual_rows = (db.query(AdvanceSettlementRow)
-                     .filter(AdvanceSettlementRow.emp_id == emp_id).all())
+    manual_rows = (db.query(Settle)
+                     .filter(Settle.emp_id == emp_id).all())
     for ms in manual_rows:
         entries.append({
             "type": "settled_manual", "id": ms.id, "date": ms.date,
             "amount": ms.amount, "note": ms.note,
         })
     entries.sort(key=lambda e: e["date"], reverse=True)
-    bal = _advance_balances(db).get(emp_id, {"totalAdvanced": 0, "totalSettled": 0, "balance": 0})
+    bal = _advance_balances(db, pay_type).get(emp_id, {"totalAdvanced": 0, "totalSettled": 0, "balance": 0})
     return {"empId": emp_id, **bal, "entries": entries}
 
 
@@ -484,11 +519,19 @@ class AdvanceIn(BaseModel):
     date: str      = Field(min_length=1)   # "YYYY-MM-DD"
     amount: float  = Field(gt=0)
     note: Optional[str] = None
+    payType: str   = Field(default="salary")
 
     @field_validator('date')
     @classmethod
     def _valid_date(cls, v):
         date.fromisoformat(v)
+        return v
+
+    @field_validator('payType')
+    @classmethod
+    def _valid_pay_type(cls, v):
+        if v not in ("salary", "cash"):
+            raise ValueError("payType must be 'salary' or 'cash'")
         return v
 
     @field_validator('note', mode='before')
@@ -505,11 +548,19 @@ class AdvanceSettlementIn(BaseModel):
     date: str      = Field(min_length=1)   # "YYYY-MM-DD"
     amount: float  = Field(gt=0)
     note: Optional[str] = None
+    payType: str   = Field(default="salary")
 
     @field_validator('date')
     @classmethod
     def _valid_date(cls, v):
         date.fromisoformat(v)
+        return v
+
+    @field_validator('payType')
+    @classmethod
+    def _valid_pay_type(cls, v):
+        if v not in ("salary", "cash"):
+            raise ValueError("payType must be 'salary' or 'cash'")
         return v
 
     @field_validator('note', mode='before')
@@ -805,22 +856,24 @@ def _compute_payroll(payload: PayrollIn, db: Session) -> dict:
     records = []
     errors = []
 
-    given = dict(db.query(AdvanceRow.emp_id, func.sum(AdvanceRow.amount))
-                    .group_by(AdvanceRow.emp_id).all())
+    Emp, Adv, Settle = _emp_model(payload.payType), _adv_model(payload.payType), _settle_model(payload.payType)
+    given = dict(db.query(Adv.emp_id, func.sum(Adv.amount))
+                    .group_by(Adv.emp_id).all())
     settled_other_months = dict(
         db.query(PayrollRecordRow.emp_id, func.sum(PayrollRecordRow.advance_settlement))
-          .filter(PayrollRecordRow.payroll_month != payload.month)
+          .filter(PayrollRecordRow.payroll_month != payload.month,
+                  PayrollRecordRow.pay_type == payload.payType)
           .group_by(PayrollRecordRow.emp_id).all()
     )
     manual_settled = dict(
-        db.query(AdvanceSettlementRow.emp_id, func.sum(AdvanceSettlementRow.amount))
-          .group_by(AdvanceSettlementRow.emp_id).all()
+        db.query(Settle.emp_id, func.sum(Settle.amount))
+          .group_by(Settle.emp_id).all()
     )
 
     home_visit_rate = _get_home_visit_rate(db)
 
     for entry in payload.entries:
-        row = db.query(EmployeeRow).filter(EmployeeRow.id == entry.empId).first()
+        row = db.query(Emp).filter(Emp.id == entry.empId).first()
         if not row:
             errors.append(f"Employee {entry.empId} not found")
             continue
@@ -937,7 +990,8 @@ def health():
 # ── Employees ─────────────────────────────────────────────────────────────────
 @app.get("/employees")
 def list_employees(pay_type: str = "salary", db: Session = Depends(get_db)):
-    rows = db.query(EmployeeRow).filter(EmployeeRow.pay_type == pay_type).all()
+    Emp = _emp_model(pay_type)
+    rows = db.query(Emp).all()
     rows.sort(key=lambda e: _emp_sort_key(e.id))
     return [_emp_dict(e) for e in rows]
 
@@ -949,16 +1003,17 @@ def _assert_category_exists(category: str, db: Session):
 
 @app.post("/employees", status_code=201)
 def create_employee(emp: Employee, db: Session = Depends(get_db)):
-    if db.query(EmployeeRow).filter(EmployeeRow.id == emp.id).first():
+    Emp = _emp_model(emp.payType)
+    if db.query(Emp).filter(Emp.id == emp.id).first():
         raise HTTPException(400, detail="Employee ID already exists")
     _assert_category_exists(emp.category, db)
-    row = EmployeeRow(id=emp.id, name=emp.name, monthly=emp.monthly,
-                      hourly=emp.hourly, working_days=emp.workingDays,
-                      category=emp.category, emp_id=emp.empId,
-                      shift_type=emp.shiftType, shift2_monthly=emp.shift2Monthly,
-                      shift2_hourly=emp.shift2Hourly,
-                      pay_type=emp.payType,
-                      updated_at=datetime.now(timezone.utc).isoformat())
+    row = Emp(id=emp.id, name=emp.name, monthly=emp.monthly,
+              hourly=emp.hourly, working_days=emp.workingDays,
+              category=emp.category, emp_id=emp.empId,
+              shift_type=emp.shiftType, shift2_monthly=emp.shift2Monthly,
+              shift2_hourly=emp.shift2Hourly,
+              pay_type=emp.payType,
+              updated_at=datetime.now(timezone.utc).isoformat())
     db.add(row)
     db.commit()
     db.refresh(row)
@@ -967,7 +1022,8 @@ def create_employee(emp: Employee, db: Session = Depends(get_db)):
 
 @app.put("/employees/{emp_id}")
 def update_employee(emp_id: str, emp: Employee, db: Session = Depends(get_db)):
-    row = db.query(EmployeeRow).filter(EmployeeRow.id == emp_id).first()
+    Emp = _emp_model(emp.payType)
+    row = db.query(Emp).filter(Emp.id == emp_id).first()
     if not row:
         raise HTTPException(404, detail="Employee not found")
     _assert_category_exists(emp.category, db)
@@ -987,8 +1043,9 @@ def update_employee(emp_id: str, emp: Employee, db: Session = Depends(get_db)):
 
 
 @app.delete("/employees/{emp_id}")
-def delete_employee(emp_id: str, db: Session = Depends(get_db)):
-    row = db.query(EmployeeRow).filter(EmployeeRow.id == emp_id).first()
+def delete_employee(emp_id: str, pay_type: str = "salary", db: Session = Depends(get_db)):
+    Emp = _emp_model(pay_type)
+    row = db.query(Emp).filter(Emp.id == emp_id).first()
     if not row:
         raise HTTPException(404, detail="Employee not found")
     db.delete(row)
@@ -1061,7 +1118,8 @@ def delete_category(cat_id: int, db: Session = Depends(get_db)):
     row = db.query(CategoryRow).filter(CategoryRow.id == cat_id).first()
     if not row:
         raise HTTPException(404, detail="Category not found")
-    in_use = db.query(EmployeeRow).filter(EmployeeRow.category == row.name).first()
+    in_use = (db.query(EmployeeRow).filter(EmployeeRow.category == row.name).first()
+              or db.query(CashEmployeeRow).filter(CashEmployeeRow.category == row.name).first())
     if in_use:
         raise HTTPException(400, detail=f"Category is assigned to employees — reassign them first")
     db.delete(row)
@@ -1072,24 +1130,25 @@ def delete_category(cat_id: int, db: Session = Depends(get_db)):
 # ── Advances ─────────────────────────────────────────────────────────────────
 @app.get("/advances/balances")
 def get_advance_balances(pay_type: str = "salary", db: Session = Depends(get_db)):
-    group_ids = [eid for (eid,) in db.query(EmployeeRow.id).filter(EmployeeRow.pay_type == pay_type).all()]
-    balances = _advance_balances(db, emp_ids=group_ids)
+    group_ids = [eid for (eid,) in db.query(_emp_model(pay_type).id).all()]
+    balances = _advance_balances(db, pay_type, emp_ids=group_ids)
     return [{"empId": emp_id, **v} for emp_id, v in balances.items()]
 
 
 @app.get("/advances/{emp_id}")
-def get_advance_history(emp_id: str, db: Session = Depends(get_db)):
-    if not db.query(EmployeeRow).filter(EmployeeRow.id == emp_id).first():
+def get_advance_history(emp_id: str, pay_type: str = "salary", db: Session = Depends(get_db)):
+    if not db.query(_emp_model(pay_type)).filter(_emp_model(pay_type).id == emp_id).first():
         raise HTTPException(404, detail="Employee not found")
-    return _advance_history(emp_id, db)
+    return _advance_history(emp_id, db, pay_type)
 
 
 @app.post("/advances", status_code=201)
 def create_advance(adv: AdvanceIn, db: Session = Depends(get_db)):
-    if not db.query(EmployeeRow).filter(EmployeeRow.id == adv.empId).first():
+    Emp, Adv = _emp_model(adv.payType), _adv_model(adv.payType)
+    if not db.query(Emp).filter(Emp.id == adv.empId).first():
         raise HTTPException(404, detail="Employee not found")
-    row = AdvanceRow(emp_id=adv.empId, date=adv.date, amount=adv.amount, note=adv.note,
-                      created_at=datetime.now(timezone.utc).isoformat())
+    row = Adv(emp_id=adv.empId, date=adv.date, amount=adv.amount, note=adv.note,
+              created_at=datetime.now(timezone.utc).isoformat())
     db.add(row)
     db.commit()
     db.refresh(row)
@@ -1098,7 +1157,8 @@ def create_advance(adv: AdvanceIn, db: Session = Depends(get_db)):
 
 @app.put("/advances/{advance_id}")
 def update_advance(advance_id: int, adv: AdvanceIn, db: Session = Depends(get_db)):
-    row = db.query(AdvanceRow).filter(AdvanceRow.id == advance_id).first()
+    Adv = _adv_model(adv.payType)
+    row = db.query(Adv).filter(Adv.id == advance_id).first()
     if not row:
         raise HTTPException(404, detail="Advance entry not found")
     row.date = adv.date
@@ -1110,11 +1170,12 @@ def update_advance(advance_id: int, adv: AdvanceIn, db: Session = Depends(get_db
 
 
 @app.delete("/advances/{advance_id}")
-def delete_advance(advance_id: int, db: Session = Depends(get_db)):
-    row = db.query(AdvanceRow).filter(AdvanceRow.id == advance_id).first()
+def delete_advance(advance_id: int, pay_type: str = "salary", db: Session = Depends(get_db)):
+    Adv = _adv_model(pay_type)
+    row = db.query(Adv).filter(Adv.id == advance_id).first()
     if not row:
         raise HTTPException(404, detail="Advance entry not found")
-    balance = _advance_balances(db).get(row.emp_id, {"balance": 0})["balance"]
+    balance = _advance_balances(db, pay_type).get(row.emp_id, {"balance": 0})["balance"]
     if row.amount > balance:
         raise HTTPException(
             400,
@@ -1128,18 +1189,19 @@ def delete_advance(advance_id: int, db: Session = Depends(get_db)):
 # ── Advance Settlements (manual / cash) ─────────────────────────────────────
 @app.post("/advance-settlements", status_code=201)
 def create_advance_settlement(s: AdvanceSettlementIn, db: Session = Depends(get_db)):
-    if not db.query(EmployeeRow).filter(EmployeeRow.id == s.empId).first():
+    Emp, Adv, Settle = _emp_model(s.payType), _adv_model(s.payType), _settle_model(s.payType)
+    if not db.query(Emp).filter(Emp.id == s.empId).first():
         raise HTTPException(404, detail="Employee not found")
-    first_advance = db.query(func.min(AdvanceRow.date)).filter(AdvanceRow.emp_id == s.empId).scalar()
+    first_advance = db.query(func.min(Adv.date)).filter(Adv.emp_id == s.empId).scalar()
     if not first_advance:
         raise HTTPException(400, detail="No advances found for this employee")
     if s.date < first_advance:
         raise HTTPException(400, detail=f"Settlement date cannot be before first advance date ({first_advance})")
-    balance = _advance_balances(db).get(s.empId, {"balance": 0})["balance"]
+    balance = _advance_balances(db, s.payType).get(s.empId, {"balance": 0})["balance"]
     if s.amount > balance:
         raise HTTPException(400, detail=f"Settlement amount ({s.amount}) exceeds outstanding balance ({balance})")
-    row = AdvanceSettlementRow(emp_id=s.empId, date=s.date, amount=s.amount, note=s.note,
-                                created_at=datetime.now(timezone.utc).isoformat())
+    row = Settle(emp_id=s.empId, date=s.date, amount=s.amount, note=s.note,
+                 created_at=datetime.now(timezone.utc).isoformat())
     db.add(row)
     db.commit()
     db.refresh(row)
@@ -1148,13 +1210,14 @@ def create_advance_settlement(s: AdvanceSettlementIn, db: Session = Depends(get_
 
 @app.put("/advance-settlements/{settlement_id}")
 def update_advance_settlement(settlement_id: int, s: AdvanceSettlementIn, db: Session = Depends(get_db)):
-    row = db.query(AdvanceSettlementRow).filter(AdvanceSettlementRow.id == settlement_id).first()
+    Adv, Settle = _adv_model(s.payType), _settle_model(s.payType)
+    row = db.query(Settle).filter(Settle.id == settlement_id).first()
     if not row:
         raise HTTPException(404, detail="Settlement entry not found")
-    first_advance = db.query(func.min(AdvanceRow.date)).filter(AdvanceRow.emp_id == row.emp_id).scalar()
+    first_advance = db.query(func.min(Adv.date)).filter(Adv.emp_id == row.emp_id).scalar()
     if first_advance and s.date < first_advance:
         raise HTTPException(400, detail=f"Settlement date cannot be before first advance date ({first_advance})")
-    balance = _advance_balances(db).get(row.emp_id, {"balance": 0})["balance"]
+    balance = _advance_balances(db, s.payType).get(row.emp_id, {"balance": 0})["balance"]
     max_allowed = balance + row.amount
     if s.amount > max_allowed:
         raise HTTPException(400, detail=f"Settlement amount ({s.amount}) exceeds outstanding balance ({max_allowed})")
@@ -1167,8 +1230,9 @@ def update_advance_settlement(settlement_id: int, s: AdvanceSettlementIn, db: Se
 
 
 @app.delete("/advance-settlements/{settlement_id}")
-def delete_advance_settlement(settlement_id: int, db: Session = Depends(get_db)):
-    row = db.query(AdvanceSettlementRow).filter(AdvanceSettlementRow.id == settlement_id).first()
+def delete_advance_settlement(settlement_id: int, pay_type: str = "salary", db: Session = Depends(get_db)):
+    Settle = _settle_model(pay_type)
+    row = db.query(Settle).filter(Settle.id == settlement_id).first()
     if not row:
         raise HTTPException(404, detail="Settlement entry not found")
     db.delete(row)
