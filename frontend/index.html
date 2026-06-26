@@ -169,12 +169,17 @@
     <div class="page-top">
       <div><div class="page-title">Advances</div><div class="page-sub">Track advance payments &amp; settlements</div></div>
     </div>
-    <div class="form-group">
-      <label>Employee</label>
-      <input type="text" id="advEmpSearch" list="advEmpDatalist" placeholder="Search name or ID…" autocomplete="off" aria-label="Select employee for advances" oninput="onAdvEmpSearchInput()" style="width:100%;padding:10px 12px;border:1px solid var(--border);border-radius:var(--r);font-size:14px;background:var(--surface);color:var(--ink);">
-      <datalist id="advEmpDatalist"></datalist>
-      <input type="hidden" id="advEmpSelect">
+    <div class="search-wrap">
+      <span class="search-icon"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg></span>
+      <input type="text" placeholder="Search name or ID…" id="advSearchInput" aria-label="Search employees by name or ID" oninput="renderAdvanceList()">
     </div>
+    <div class="adv-grid" id="advList"></div>
+    <input type="hidden" id="advEmpSelect">
+  </div>
+
+  <!-- ADVANCE DETAIL -->
+  <div class="view" id="view-advance-detail">
+    <button class="back-btn" onclick="switchView('advances')">← Back to Advances</button>
     <div id="advanceDetail"></div>
   </div>
 

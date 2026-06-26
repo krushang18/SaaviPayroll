@@ -4,31 +4,52 @@
 let editingAdvanceId = null, deletingAdvanceId = null, currentAdvanceHistory = null;
 let editingSettlementId = null, deletingSettlementId = null;
 
-function _advEmpLabel(e) { return `${e.name} (${e.id})`; }
-
 function initAdvancesView() {
-  const sel = document.getElementById('advEmpSelect');
-  const list = document.getElementById('advEmpDatalist');
-  list.innerHTML = sortByEmpId(state.employees).map(e => `<option value="${h(_advEmpLabel(e))}"></option>`).join('');
-  const current = state.employees.find(e => e.id === sel.value);
-  document.getElementById('advEmpSearch').value = current ? _advEmpLabel(current) : '';
-  if (!current) sel.value = '';
-  renderAdvanceDetail();
+  renderAdvanceList();
 }
 
-function onAdvEmpSearchInput() {
-  const input = document.getElementById('advEmpSearch');
-  const sel = document.getElementById('advEmpSelect');
-  const val = input.value.trim();
-  if (!val) {
-    if (sel.value !== '') { sel.value = ''; renderAdvanceDetail(); }
+// Master list — every employee with their current advance balance. Balances are
+// already loaded into state.advanceBalances on init, so no extra fetch is needed.
+function renderAdvanceList() {
+  const el = document.getElementById('advList');
+  if (!state.employees.length) {
+    el.innerHTML = `<div class="empty-state"><div class="empty-icon">${icon('team')}</div><div class="empty-text">No employees</div><div class="empty-sub">Add employees to track advances</div></div>`;
     return;
   }
-  const match = state.employees.find(e => _advEmpLabel(e) === val);
-  if (match && sel.value !== match.id) {
-    sel.value = match.id;
-    renderAdvanceDetail();
+  const q = (document.getElementById('advSearchInput').value || '').toLowerCase();
+  const emps = sortByEmpId(state.employees)
+    .filter(e => !q || e.name.toLowerCase().includes(q) || e.id.toLowerCase().includes(q) || (e.empId || '').toLowerCase().includes(q));
+  if (!emps.length) {
+    el.innerHTML = `<div class="empty-state"><div class="empty-icon">${icon('search')}</div><div class="empty-text">No matches</div><div class="empty-sub">Try a different name or ID</div></div>`;
+    return;
   }
+  el.innerHTML = emps.map(e => {
+    const bal = advBalance(e.id);
+    const balColor = bal > 0 ? 'var(--danger)' : 'var(--ink-3)';
+    return `
+      <div class="adv-card" data-empid="${h(e.id)}" onclick="openAdvanceDetail(this.dataset.empid)">
+        <div class="adv-card-head">
+          <div class="avatar av${ci(e.name)}">${h(ini(e.name))}</div>
+          <div style="min-width:0;">
+            <div class="emp-name">${h(e.name)}</div>
+            <div class="emp-id">Sr ${h(e.id)}${e.empId ? ' &nbsp;·&nbsp; ' + h(e.empId) : ''}</div>
+          </div>
+        </div>
+        <div class="adv-card-foot">
+          <span class="comp-label">Balance</span>
+          <span class="adv-card-bal" style="color:${balColor};">${inr(bal)}</span>
+        </div>
+      </div>`;
+  }).join('');
+}
+
+function openAdvanceDetail(empId) {
+  document.getElementById('advEmpSelect').value = empId;
+  document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
+  document.getElementById('view-advance-detail').classList.add('active');
+  document.querySelectorAll('.bnav-btn').forEach(b => b.classList.remove('active'));
+  window.scrollTo(0, 0);
+  renderAdvanceDetail();
 }
 
 async function renderAdvanceDetail() {
@@ -48,7 +69,16 @@ async function renderAdvanceDetail() {
     return;
   }
   currentAdvanceHistory = data;
+  const emp = state.employees.find(e => e.id === empId);
   el.innerHTML = `
+    ${emp ? `
+    <div style="display:flex;align-items:center;gap:12px;margin-bottom:16px;">
+      <div class="avatar av${ci(emp.name)}">${h(ini(emp.name))}</div>
+      <div style="min-width:0;">
+        <div class="emp-name">${h(emp.name)}</div>
+        <div class="emp-id">Sr ${h(emp.id)}${emp.empId ? ' &nbsp;·&nbsp; Emp ID ' + h(emp.empId) : ''}</div>
+      </div>
+    </div>` : ''}
     <div class="comp-grid">
       <div class="comp-card"><div class="comp-label">Outstanding Balance</div><div class="comp-val" style="${data.balance > 0 ? 'color:var(--danger);' : ''}">${inr(data.balance)}</div></div>
       <div class="comp-card"><div class="comp-label">Total Advanced</div><div class="comp-val">${inr(data.totalAdvanced)}</div></div>
