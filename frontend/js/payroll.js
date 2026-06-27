@@ -122,7 +122,7 @@ function payrollRowHTML(o, cfg) {
       <td class="pcol-emp" style="white-space:nowrap;padding-left:18px;font-size:12px;color:var(--ink-3);">↳ Night shift</td>
       <td class="td-mono">${inr(o.shift2Monthly || 0)}</td>
       <td class="td-mono">${inr(o.shift2Hourly || 0)}</td>
-      <td class="td-mono">${o.workingDays}</td>
+      <td class="td-mono">${o.shift2WorkingDays ?? o.workingDays}</td>
       <td><input type="number" step="1" class="bulk-input" id="${p}pr2-${id}"${va(v.shift2PresentDays)} min="0" max="31" placeholder="—" oninput="clampMax(this);${calc2(5,'present')}" style="width:54px;"></td>
       <td><input type="number" step="1" class="bulk-input" id="${p}ab2-${id}"${va(v.shift2AbsentDays)} min="0" max="31" placeholder="—" oninput="clampMax(this);${calc2(5,'absent')}" style="width:54px;"></td>
       <td><input type="number" step="1" class="bulk-input" id="${p}nl2-${id}"${lv(v.shift2NormalLeaves)} min="0" max="99" placeholder="0"${ld2('shift2NormalLeaves')} oninput="clampMax(this);${calc2(5,'normal2')}" style="border-color:rgba(230,126,34,0.4);width:54px;"></td>
@@ -152,7 +152,7 @@ function renderBulkTable() {
   const existingIds = new Set([...tbody.querySelectorAll('tr[id^="brow-"]')].map(r => r.id.slice(5)));
   const currentIds = new Set(sortedEmps.map(e => e.id));
   const sameIds = [...currentIds].every(id => existingIds.has(id)) && existingIds.size === currentIds.size;
-  const empHash = sortedEmps.map(e => `${e.id}|${e.empId}|${e.name}|${e.monthly}|${e.hourly}|${e.workingDays}|${e.category}|${e.shiftType}|${e.shift2Monthly}|${e.shift2Hourly}`).join('\n');
+  const empHash = sortedEmps.map(e => `${e.id}|${e.empId}|${e.name}|${e.monthly}|${e.hourly}|${e.workingDays}|${e.category}|${e.shiftType}|${e.shift2Monthly}|${e.shift2Hourly}|${e.shift2WorkingDays}`).join('\n');
   if (sameIds && tbody.dataset.empHash === empHash) return;
   tbody.dataset.empHash = empHash;
 
@@ -305,7 +305,7 @@ function _shift2Contribution(emp, prefix, empId, pd, compDays, nightBase, nightA
 
   const cv = computeRowValues({
     present, effectiveAbsent, pd, compDays,
-    monthly: emp.shift2Monthly || 0, hourly: emp.shift2Hourly || 0, workingDays: emp.workingDays,
+    monthly: emp.shift2Monthly || 0, hourly: emp.shift2Hourly || 0, workingDays: emp.shift2WorkingDays ?? emp.workingDays,
     nightBase: nightBase || 0, nightAppr: nightAppr || 0,
     extraHours, nightShifts, debitHours, debitAmount, lateCount, advanceSettlement: 0,
     homeVisits, homeVisitRate: homeVisitRate || 0,

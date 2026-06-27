@@ -54,6 +54,7 @@ class _EmployeeCols:
     shift_type     = Column(String,  default="Day")
     shift2_monthly = Column(Float,   nullable=True)
     shift2_hourly  = Column(Float,   nullable=True)
+    shift2_working_days = Column(Integer, nullable=True)
     pay_type       = Column(String,  default="salary", nullable=False)
 
 
@@ -119,6 +120,7 @@ class PayrollRecordRow(Base):
     shift2_ot_pay       = Column(Float, nullable=True)
     shift2_monthly      = Column(Float, nullable=True)
     shift2_hourly       = Column(Float, nullable=True)
+    shift2_working_days = Column(Integer, nullable=True)
     home_visits         = Column(Float, default=0)
     home_visit_rate     = Column(Float, default=0)
     home_visit_pay      = Column(Float, default=0)
@@ -227,6 +229,9 @@ async def lifespan(app: FastAPI):
             "ALTER TABLE payroll_records ADD COLUMN IF NOT EXISTS shift2_late_count REAL DEFAULT NULL",
             "ALTER TABLE payroll_records ADD COLUMN IF NOT EXISTS shift2_late_penalty REAL DEFAULT NULL",
             "ALTER TABLE payroll_records ADD COLUMN IF NOT EXISTS shift2_total REAL DEFAULT NULL",
+            "ALTER TABLE employees ADD COLUMN IF NOT EXISTS shift2_working_days INTEGER DEFAULT NULL",
+            "ALTER TABLE cash_employees ADD COLUMN IF NOT EXISTS shift2_working_days INTEGER DEFAULT NULL",
+            "ALTER TABLE payroll_records ADD COLUMN IF NOT EXISTS shift2_working_days INTEGER DEFAULT NULL",
         ]:
             try:
                 conn.execute(text(sql))
@@ -289,6 +294,7 @@ def _emp_dict(row: EmployeeRow) -> dict:
         "shiftType":     row.shift_type or "Day",
         "shift2Monthly": row.shift2_monthly,
         "shift2Hourly":  row.shift2_hourly,
+        "shift2WorkingDays": row.shift2_working_days,
         "payType":       row.pay_type or "salary",
     }
 
@@ -344,6 +350,7 @@ def _record_dict(row: PayrollRecordRow) -> dict:
         "shift2OtPay":       row.shift2_ot_pay,
         "shift2Monthly":     row.shift2_monthly,
         "shift2Hourly":      row.shift2_hourly,
+        "shift2WorkingDays": row.shift2_working_days,
         "homeVisits":        row.home_visits or 0,
         "homeVisitRate":     row.home_visit_rate or 0,
         "homeVisitPay":      row.home_visit_pay or 0,
@@ -454,6 +461,7 @@ class Employee(BaseModel):
     payType: str     = Field(default="salary")
     shift2Monthly: Optional[float] = Field(default=None, ge=0)
     shift2Hourly: Optional[float]  = Field(default=None, ge=0)
+    shift2WorkingDays: Optional[int] = Field(default=None, ge=1, le=31)
 
     @field_validator('id', 'name', 'category', mode='before')
     @classmethod
@@ -466,6 +474,14 @@ class Employee(BaseModel):
         if not v:
             raise ValueError('must not be empty')
         return v
+
+    @model_validator(mode='after')
+    def _require_shift2_working_days(self):
+        # Night shift carries its own working-days baseline; it must be set explicitly
+        # for a Day & Night employee (mirrors the required night salary/hourly).
+        if self.shiftType == 'Day & Night' and self.shift2WorkingDays is None:
+            raise ValueError('shift2WorkingDays is required for a Day & Night employee')
+        return self
 
     @field_validator('empId', mode='before')
     @classmethod
@@ -770,6 +786,8 @@ def _calc_record(emp: dict, fromDate: str, toDate: str,
                  shift2LateCount: float = 0) -> dict:
     pd = _period_days(fromDate, toDate)
     wd = emp.get("workingDays", 30)
+    # Night shift carries its own working-days baseline; fall back to the day value when unset.
+    wd2 = emp.get("shift2WorkingDays") or wd
     # Months shorter than 30 days get free complementary days (salary is always /30)
     comp_days = max(0, 30 - pd)
 
@@ -787,7 +805,7 @@ def _calc_record(emp: dict, fromDate: str, toDate: str,
         if shift2PresentDays is None and shift2AbsentDays is None and \
            shift2NormalLeaves is None and shift2OnCallLeaves is None:
             raise ValueError(f"{emp['name']}: provide shift2PresentDays or shift2AbsentDays for the night shift")
-        shift2 = _calc_shift(emp["shift2Monthly"], emp["shift2Hourly"], wd, pd, comp_days,
+        shift2 = _calc_shift(emp["shift2Monthly"], emp["shift2Hourly"], wd2, pd, comp_days,
                               shift2PresentDays, shift2AbsentDays, shift2NormalLeaves, shift2OnCallLeaves,
                               shift2ExtraHours, shift2NightShifts, nightBase, nightAppr,
                               shift2HomeVisits, homeVisitRate, shift2DebitHours, shift2DebitAmount, shift2LateCount,
@@ -835,6 +853,7 @@ def _calc_record(emp: dict, fromDate: str, toDate: str,
         "shift2OtPay":            shift2["otPay"] if shift2 else None,
         "shift2Monthly":          emp.get("shift2Monthly") if shift2 else None,
         "shift2Hourly":           emp.get("shift2Hourly") if shift2 else None,
+        "shift2WorkingDays":      wd2 if shift2 else None,
         "shift2NormalLeaves":     shift2["normalLeaves"] if shift2 else None,
         "shift2OnCallLeaves":     shift2["onCallLeaves"] if shift2 else None,
         "shift2EffectiveOncall":  shift2["effectiveOncall"] if shift2 else None,
@@ -961,6 +980,7 @@ def _persist_records(result: dict, db: Session, pay_type: str = "salary"):
             shift2_ot_pay=rec.get("shift2OtPay"),
             shift2_monthly=rec.get("shift2Monthly"),
             shift2_hourly=rec.get("shift2Hourly"),
+            shift2_working_days=rec.get("shift2WorkingDays"),
             home_visits=rec.get("homeVisits", 0),
             home_visit_rate=rec.get("homeVisitRate", 0),
             home_visit_pay=rec.get("homeVisitPay", 0),
@@ -1011,7 +1031,7 @@ def create_employee(emp: Employee, db: Session = Depends(get_db)):
               hourly=emp.hourly, working_days=emp.workingDays,
               category=emp.category, emp_id=emp.empId,
               shift_type=emp.shiftType, shift2_monthly=emp.shift2Monthly,
-              shift2_hourly=emp.shift2Hourly,
+              shift2_hourly=emp.shift2Hourly, shift2_working_days=emp.shift2WorkingDays,
               pay_type=emp.payType,
               updated_at=datetime.now(timezone.utc).isoformat())
     db.add(row)
@@ -1036,6 +1056,7 @@ def update_employee(emp_id: str, emp: Employee, db: Session = Depends(get_db)):
     row.shift_type = emp.shiftType
     row.shift2_monthly = emp.shift2Monthly
     row.shift2_hourly = emp.shift2Hourly
+    row.shift2_working_days = emp.shift2WorkingDays
     row.updated_at = datetime.now(timezone.utc).isoformat()
     db.commit()
     db.refresh(row)

@@ -239,7 +239,7 @@ function fullSheetHTML(payroll) {
               <td class="pcol-empid"></td>
               <td class="pcol-emp" style="padding-left:18px;font-size:11px;color:var(--ink-3);">↳ Night shift (${inr(r.shift2Monthly||0)} / ${inr(r.shift2Hourly||0)} hr)</td>
               <td class="td-mono">${inr(r.shift2Monthly||0)}</td>
-              <td class="td-mono">${r.workingDays}</td>
+              <td class="td-mono">${r.shift2WorkingDays ?? r.workingDays}</td>
               <td>${r.shift2PresentDays ?? '—'}</td>
               <td>${r.shift2AbsentDays ?? '—'}</td>
               <td>${r.shift2NormalLeaves ?? '—'}</td>
@@ -362,7 +362,7 @@ function editMonthDetail(month) {
             const obj = { id: r.empId, empId: emp?.empId || null, category: emp?.category || null,
                           name: r.empName, monthly: r.monthly, hourly: r.hourly, workingDays: r.workingDays,
                           shiftType: isDual ? 'Day & Night' : (emp?.shiftType || 'Day'),
-                          shift2Monthly: r.shift2Monthly, shift2Hourly: r.shift2Hourly };
+                          shift2Monthly: r.shift2Monthly, shift2Hourly: r.shift2Hourly, shift2WorkingDays: r.shift2WorkingDays };
             const vals = { presentDays: r.presentDays, absentDays: r.absentDays,
                            normalLeaves: r.normalLeaves, onCallLeaves: r.onCallLeaves,
                            extraHours: r.extraHours || 0, nightShifts: r.nightShifts || 0,
@@ -494,7 +494,7 @@ function calcEditRow(empId, month, source) {
   const { dayAdj } = cv;
   const isDual = rec.shift2BasePay != null;
   const s2 = isDual
-    ? _shift2Contribution({ shiftType: 'Day & Night', shift2Monthly: rec.shift2Monthly, shift2Hourly: rec.shift2Hourly, workingDays: rec.workingDays }, 'e', empId, pd, rec.compDays || 0,
+    ? _shift2Contribution({ shiftType: 'Day & Night', shift2Monthly: rec.shift2Monthly, shift2Hourly: rec.shift2Hourly, workingDays: rec.workingDays, shift2WorkingDays: rec.shift2WorkingDays }, 'e', empId, pd, rec.compDays || 0,
         rec.nightBase || 0, rec.nightAppr || 0, state.settings.homeVisitRate || 0)
     : { hasInput: false, dayAdj: 0, total: 0 };
   const adj2El    = document.getElementById('eadj2-'    + empId);

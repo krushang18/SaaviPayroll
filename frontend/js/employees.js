@@ -206,7 +206,7 @@ function onShiftTypeChange() {
 function openAddModal() {
   editingId = null;
   document.getElementById('modalTitle').textContent = 'Add Employee';
-  ['fId','fEmpId','fName','fMonthly','fWorkingDays','fHourly','fShift2Monthly','fShift2Hourly'].forEach(i => document.getElementById(i).value = '');
+  ['fId','fEmpId','fName','fMonthly','fWorkingDays','fHourly','fShift2Monthly','fShift2Hourly','fShift2WorkingDays'].forEach(i => document.getElementById(i).value = '');
   document.getElementById('fId').disabled = false;
   document.getElementById('fShiftType').value = 'Day';
   document.getElementById('computedDay').textContent = '';
@@ -228,6 +228,7 @@ function openEditModal(id) {
   document.getElementById('fHourly').value = emp.hourly;
   document.getElementById('fShift2Monthly').value = emp.shift2Monthly ?? '';
   document.getElementById('fShift2Hourly').value = emp.shift2Hourly ?? '';
+  document.getElementById('fShift2WorkingDays').value = emp.shift2WorkingDays ?? '';
   onShiftTypeChange();
   _populateCategorySelect(emp.category || '');
   updateComputedDay();
@@ -249,15 +250,19 @@ async function saveEmployee() {
     toast('Please fill all fields.', 'error'); return;
   }
   if (!category) { toast('Please select a category.', 'error'); return; }
-  let shift2Monthly = null, shift2Hourly = null;
+  let shift2Monthly = null, shift2Hourly = null, shift2WorkingDays = null;
   if (shiftType === 'Day & Night') {
     shift2Monthly = parseFloat(document.getElementById('fShift2Monthly').value);
     shift2Hourly = parseFloat(document.getElementById('fShift2Hourly').value);
+    shift2WorkingDays = parseInt(document.getElementById('fShift2WorkingDays').value);
     if (isNaN(shift2Monthly) || isNaN(shift2Hourly)) {
       toast('Please fill the night rate fields for a Day & Night employee.', 'error'); return;
     }
+    if (isNaN(shift2WorkingDays) || shift2WorkingDays < 1 || shift2WorkingDays > 31) {
+      toast('Please enter the night working days (1–31) for a Day & Night employee.', 'error'); return;
+    }
   }
-  const empData = { id, empId, name, monthly, workingDays, hourly, category, shiftType, shift2Monthly, shift2Hourly, payType: state.payType };
+  const empData = { id, empId, name, monthly, workingDays, hourly, category, shiftType, shift2Monthly, shift2Hourly, shift2WorkingDays, payType: state.payType };
   try {
     if (editingId) {
       const updated = await api('PUT', '/employees/' + editingId, empData);
