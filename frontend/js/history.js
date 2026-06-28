@@ -434,6 +434,7 @@ function downloadMonthFullPDF(month) {
             'OT', 'Debit', 'Debit Amt', 'Late Ded', 'Adv Settle', 'Total']],
     body: rows,
     foot: [[{ content: 'Grand Total', colSpan: 23, styles: { halign: 'right', fontStyle: 'bold' } }, num(payroll.totalPay)]],
+    showFoot: 'lastPage',
     margin: { left: 8, right: 8 },
     styles: { fontSize: 6, cellPadding: 1, overflow: 'linebreak', halign: 'right' },
     headStyles: { fillColor: [46, 134, 222], fontSize: 6, halign: 'right' },
