@@ -61,6 +61,7 @@ function showMonthDetail(month) {
     <div style="display:flex;gap:10px;">
       <button class="btn btn-outline" style="flex:1;" onclick="editMonthDetail('${payroll.month}')">Edit Payroll</button>
       <button class="btn btn-outline" onclick="downloadMonthPDF('${payroll.month}')">Download PDF</button>
+      <button class="btn btn-outline" onclick="downloadMonthFullPDF('${payroll.month}')">Download Full PDF</button>
       <button class="btn btn-danger-out" onclick="deletePayroll('${payroll.month}')">Delete</button>
     </div>
   `;
@@ -337,6 +338,126 @@ function downloadMonthPDF(month) {
   }
 
   doc.save(`Payroll_${payroll.month}.pdf`);
+}
+
+// Landscape "Full breakdown" export — mirrors fullSheetHTML() column-for-column.
+// The portrait downloadMonthPDF above is intentionally left untouched.
+function downloadMonthFullPDF(month) {
+  const payroll = state.payrolls.find(p => p.month === month);
+  if (!payroll || !payroll.records) { toast('Payroll data not found.', 'error'); return; }
+
+  const doc = new jspdf.jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
+
+  doc.setFontSize(16);
+  doc.text(`${monthName(payroll.month)} Payroll`, 14, 14);
+  doc.setFontSize(10);
+  doc.text(`${fmtDate(payroll.fromDate)} - ${fmtDate(payroll.toDate)} | ${payroll.employeeCount} employees`, 14, 20);
+  doc.setFontSize(8);
+  doc.setTextColor(120, 120, 120);
+  doc.text('All amounts in Rs.', 14, 25);
+  doc.setTextColor(20, 20, 20);
+
+  // Money formatter without the "Rs." prefix — 24 columns won't fit on A4 landscape otherwise.
+  const num = n => Number(n || 0).toLocaleString('en-IN');
+  const numSigned = n => ((n || 0) >= 0 ? '+' : '') + num(n);   // matches Day Adj sign in fullSheetHTML
+  const dash = '—';
+
+  const rows = [];
+  let hasDual = false;
+  payroll.records.forEach(r => {
+    const effLeave = (r.normalLeaves != null || r.effectiveOncall != null)
+      ? (r.normalLeaves ?? 0) + (r.effectiveOncall ?? 0) : dash;
+    const debitTotal = (r.debitAmount || 0) + (r.debitHrsPay || 0);
+    rows.push([
+      r.empId,
+      _empIdFor(r.empId),
+      r.empName,
+      num(r.monthly),
+      r.workingDays,
+      r.presentDays,
+      r.absentDays,
+      r.normalLeaves ?? dash,
+      r.onCallLeaves ?? dash,
+      effLeave,
+      r.extraHours || 0,
+      r.nightShifts || 0,
+      (r.nightPay || 0) > 0 ? '+' + num(r.nightPay) : dash,
+      r.homeVisits || 0,
+      (r.homeVisitPay || 0) > 0 ? '+' + num(r.homeVisitPay) : dash,
+      r.debitHours || 0,
+      r.lateCount || 0,
+      numSigned(r.dayAdj || 0),
+      num(r.otPay || 0),
+      (r.debitAmount || 0) > 0 ? '-' + num(r.debitAmount) : dash,
+      debitTotal > 0 ? '-' + num(debitTotal) : dash,
+      (r.latePenalty || 0) > 0 ? '-' + num(r.latePenalty) : dash,
+      (r.advanceSettlement || 0) > 0 ? '-' + num(r.advanceSettlement) : dash,
+      num(r.total),
+    ]);
+    if (r.shift2BasePay != null) {
+      hasDual = true;
+      const effLeave2 = (r.shift2NormalLeaves != null || r.shift2EffectiveOncall != null)
+        ? (r.shift2NormalLeaves ?? 0) + (r.shift2EffectiveOncall ?? 0) : dash;
+      const debitTotal2 = (r.shift2DebitAmount || 0) + (r.shift2DebitHrsPay || 0);
+      rows.push([
+        '', '',
+        '   -> Night shift',
+        num(r.shift2Monthly || 0),
+        r.shift2WorkingDays ?? r.workingDays,
+        r.shift2PresentDays ?? dash,
+        r.shift2AbsentDays ?? dash,
+        r.shift2NormalLeaves ?? dash,
+        r.shift2OnCallLeaves ?? dash,
+        effLeave2,
+        r.shift2ExtraHours || 0,
+        r.shift2NightShifts || 0,
+        (r.shift2NightPay || 0) > 0 ? '+' + num(r.shift2NightPay) : dash,
+        r.shift2HomeVisits || 0,
+        (r.shift2HomeVisitPay || 0) > 0 ? '+' + num(r.shift2HomeVisitPay) : dash,
+        r.shift2DebitHours || 0,
+        r.shift2LateCount || 0,
+        numSigned(r.shift2DayAdj || 0),
+        num(r.shift2OtPay || 0),
+        (r.shift2DebitAmount || 0) > 0 ? '-' + num(r.shift2DebitAmount) : dash,
+        debitTotal2 > 0 ? '-' + num(debitTotal2) : dash,
+        (r.shift2LatePenalty || 0) > 0 ? '-' + num(r.shift2LatePenalty) : dash,
+        dash,
+        num(r.shift2Total || 0) + ' *',
+      ]);
+    }
+  });
+
+  doc.autoTable({
+    startY: 29,
+    head: [['Sr. No.', 'Emp ID', 'Employee', 'Monthly', 'WD', 'Present', 'Absent', 'Nml Leave', 'OnCall',
+            'Eff. Leave', 'Ex. Hrs', 'Night', 'Night Pay', 'Home', 'Home Pay', 'Dbt Hrs', 'Late', 'Day Adj',
+            'OT', 'Debit', 'Debit Amt', 'Late Ded', 'Adv Settle', 'Total']],
+    body: rows,
+    foot: [[{ content: 'Grand Total', colSpan: 23, styles: { halign: 'right', fontStyle: 'bold' } }, num(payroll.totalPay)]],
+    margin: { left: 8, right: 8 },
+    styles: { fontSize: 6, cellPadding: 1, overflow: 'linebreak', halign: 'right' },
+    headStyles: { fillColor: [46, 134, 222], fontSize: 6, halign: 'right' },
+    footStyles: { fillColor: [240, 240, 240], textColor: [20, 20, 20], fontStyle: 'bold' },
+    columnStyles: {
+      0: { halign: 'left', cellWidth: 11 },   // Sr. No.
+      1: { halign: 'left', cellWidth: 13 },   // Emp ID
+      2: { halign: 'left', cellWidth: 34 },   // Employee
+    },
+    didParseCell: (data) => {
+      if (data.row.section === 'body' && Array.isArray(data.row.raw) && String(data.row.raw[2] || '').includes('Night shift')) {
+        data.cell.styles.textColor = [120, 120, 120];
+        data.cell.styles.fontSize = 5.5;
+      }
+    }
+  });
+
+  if (hasDual) {
+    doc.setFontSize(8);
+    doc.setTextColor(120, 120, 120);
+    doc.text('* Night shift total is already included in the day row\'s Total above.', 14, doc.lastAutoTable.finalY + 8);
+  }
+
+  doc.save(`Payroll_${payroll.month}_Full.pdf`);
 }
 
 function editMonthDetail(month) {
