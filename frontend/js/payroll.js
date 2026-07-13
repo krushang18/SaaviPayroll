@@ -24,9 +24,11 @@ function initBulkCalc() {
 // One column layout for both screens. cfg = { mode:'create'|'edit', prefix, month, vals }
 // `o` is an employee-like object: { id, name, category, monthly, hourly, workingDays }.
 function payrollHeadHTML(cfg) {
-  const staffCols = cfg.mode === 'create' ? 4 : 3;   // create has a checkbox column
+  const staffCols = (cfg.mode === 'create' || cfg.mode === 'edit') ? 4 : 3;   // create & edit lead with a checkbox column
   const checkTh = cfg.mode === 'create'
     ? `<th class="pcol-check"><input type="checkbox" id="${cfg.prefix}SelectAll" checked onchange="toggleSelectAll(this.checked)" aria-label="Select all employees" title="Select all"></th>`
+    : cfg.mode === 'edit'
+    ? `<th class="pcol-check" title="Untick an employee to remove them from this payroll when you save">Keep</th>`
     : '';
   return `
     <tr class="col-group-row">
@@ -76,8 +78,9 @@ function payrollRowHTML(o, cfg) {
   const va  = x => edit ? ` value="${x ?? ''}"` : '';                 // numeric inputs prefill in edit
   const lv  = x => edit ? ` value="${x ?? ''}"` : '';                 // leave inputs prefill in edit
   const ld  = key => edit ? (v[key] == null ? ' disabled' : '') : ' disabled';  // leaves: create start disabled; edit disabled if null
-  const checkboxCell = edit ? '' :
-    `<td class="pcol-check"><input type="checkbox" class="${p}RowCheck" id="${p}chk-${id}" checked aria-label="Include ${h(o.name)} in payroll" onchange="updateGrandTotal()"></td>`;
+  const checkboxCell = edit
+    ? `<td class="pcol-check"><input type="checkbox" class="${p}RowCheck" id="${p}chk-${id}" checked aria-label="Keep ${h(o.name)} in payroll" title="Untick to remove ${h(o.name)} from this payroll when you save" onchange="toggleEditRow('${id}','${cfg.month}',this.checked)"></td>`
+    : `<td class="pcol-check"><input type="checkbox" class="${p}RowCheck" id="${p}chk-${id}" checked aria-label="Include ${h(o.name)} in payroll" onchange="updateGrandTotal()"></td>`;
   const isDual = o.shiftType === 'Day & Night';
   const calc2 = (slice, src) => edit
     ? `calcEditRowShift2(this.id.slice(${slice}),'${cfg.month}'${src ? `,'${src}'` : ''})`

@@ -506,6 +506,21 @@ button:focus-visible, .dtab:focus-visible, .bnav-btn:focus-visible,
 #bulkTable thead th.pcol-check { z-index: 8; }
 #bulkTable tbody tr:nth-child(even) td.pcol-check { background: #f8f5f1; }
 #bulkTable tr:hover td.pcol-check { background: var(--accent-lt) !important; }
+/* edit table also leads with a "Keep" checkbox column, so mirror the pinned offsets */
+.payroll-edit-table td.pcol-check, .payroll-edit-table th.pcol-check {
+  position: sticky; left: 0; z-index: 4; background: var(--surface);
+  width: 38px; min-width: 38px; max-width: 38px; text-align: center; }
+.payroll-edit-table td.pcol-id,    .payroll-edit-table th.pcol-id    { left: 38px; }
+.payroll-edit-table td.pcol-empid, .payroll-edit-table th.pcol-empid { left: 84px; }
+.payroll-edit-table td.pcol-emp,   .payroll-edit-table th.pcol-emp   { left: 140px; }
+.payroll-edit-table thead th.pcol-check { z-index: 8; font-size: 10px; letter-spacing: 0.3px; }
+.payroll-edit-table tbody tr:nth-child(even) td.pcol-check { background: #f8f5f1; }
+.payroll-edit-table tr:hover td.pcol-check { background: var(--accent-lt) !important; }
+.payroll-edit-table tr.shift2-row td.pcol-check { background: var(--surface2); }
+/* row flagged for removal (its "Keep" box is unticked) */
+.payroll-edit-table tr.row-removing td { opacity: 0.4; }
+.payroll-edit-table tr.row-removing td.pcol-check { opacity: 1; }
+.payroll-edit-table tr.row-removing td.pcol-emp { text-decoration: line-through; }
 /* keep pinned cells opaque with the row's background */
 tbody tr:nth-child(even) td.pcol-id, tbody tr:nth-child(even) td.pcol-empid, tbody tr:nth-child(even) td.pcol-emp { background: #f8f5f1; }
 tr:hover td.pcol-id, tr:hover td.pcol-empid, tr:hover td.pcol-emp { background: var(--accent-lt) !important; }

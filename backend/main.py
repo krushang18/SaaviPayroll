@@ -1296,6 +1296,8 @@ def preview_payroll(payload: PayrollIn, db: Session = Depends(get_db)):
 
 @app.post("/payrolls", status_code=201)
 def save_payroll(payload: PayrollIn, db: Session = Depends(get_db)):
+    if not payload.entries:
+        raise HTTPException(400, detail="A payroll must include at least one employee.")
     if db.query(PayrollRow).filter(
         PayrollRow.month == payload.month, PayrollRow.pay_type == payload.payType
     ).first():
@@ -1331,6 +1333,8 @@ def save_payroll(payload: PayrollIn, db: Session = Depends(get_db)):
 def update_payroll(month: str, payload: PayrollIn, db: Session = Depends(get_db)):
     if payload.month != month:
         raise HTTPException(400, detail="month in URL must match payload")
+    if not payload.entries:
+        raise HTTPException(400, detail="A payroll must include at least one employee. Use DELETE to remove the whole month.")
     result = _compute_payroll(payload, db)
     saved_at = datetime.now(timezone.utc).isoformat()
     pt = payload.payType

@@ -502,7 +502,7 @@ function editMonthDetail(month) {
         </tbody>
         <tfoot>
           <tr>
-            <td colspan="22" style="text-align:right;font-size:11px;letter-spacing:1px;text-transform:uppercase;color:var(--ink-3);padding-right:16px;">Grand Total</td>
+            <td colspan="23" style="text-align:right;font-size:11px;letter-spacing:1px;text-transform:uppercase;color:var(--ink-3);padding-right:16px;">Grand Total</td>
             <td id="eGrandTotal" style="font-family:var(--num);font-size:15px;font-weight:700;color:var(--accent);">—</td>
           </tr>
         </tfoot>
@@ -657,14 +657,32 @@ function calcEditRow(empId, month, source) {
   }
   if (totEl) totEl.textContent = inr(total);
 
-  // Update grand total
+  updateEditGrandTotal(month);
+}
+
+// Sum the edit-table row totals, skipping any employee whose "Keep" box is unticked
+// (those rows are pending removal and must not count toward the payroll total).
+function updateEditGrandTotal(month) {
+  const payroll = state.payrolls.find(p => p.month === month);
+  if (!payroll) return;
   let sum = 0;
   payroll.records.forEach(r => {
+    const cb = document.getElementById('echk-' + r.empId);
+    if (cb && !cb.checked) return;
     const el = document.getElementById('etot-' + r.empId);
     if (el) { const v = parseFloat(el.textContent.replace(/[₹,]/g, '')); if (!isNaN(v)) sum += v; }
   });
   const gtEl = document.getElementById('eGrandTotal');
   if (gtEl) gtEl.textContent = inr(sum);
+}
+
+// Untick "Keep" to flag an employee for removal: dim the row(s) and drop them from the total.
+function toggleEditRow(empId, month, checked) {
+  const row  = document.getElementById('erow-'  + empId);
+  const row2 = document.getElementById('erow2-' + empId);
+  if (row)  row.classList.toggle('row-removing', !checked);
+  if (row2) row2.classList.toggle('row-removing', !checked);
+  updateEditGrandTotal(month);
 }
 
 // Night sub-row present/absent + leave auto-balance for Edit, mirrors calcBulkRowShift2.
@@ -737,9 +755,23 @@ async function saveMonthEdit(month) {
   const payroll = state.payrolls.find(p => p.month === month);
   if (!payroll) return;
 
+  // Employees with their "Keep" box unticked are dropped from this payroll on save.
+  const isKept  = r => { const cb = document.getElementById('echk-' + r.empId); return !cb || cb.checked; };
+  const kept    = payroll.records.filter(isKept);
+  const removed = payroll.records.filter(r => !isKept(r));
+  if (kept.length === 0) {
+    toast('At least one employee must remain. To remove the whole month, use Delete Payroll instead.', 'error');
+    return;
+  }
+  if (removed.length > 0) {
+    const names = removed.map(r => '• ' + r.empName).join('\n');
+    const ok = confirm(`Remove ${removed.length} employee${removed.length > 1 ? 's' : ''} from ${monthName(month)} payroll? This cannot be undone.\n\n${names}`);
+    if (!ok) return;
+  }
+
   // Validate leave sums before building entries
   const leaveErrors = [];
-  for (const r of payroll.records) {
+  for (const r of kept) {
     const nlEl  = document.getElementById('enl-'  + r.empId);
     const oclEl = document.getElementById('eocl-' + r.empId);
     const abEl  = document.getElementById('eab-'  + r.empId);
@@ -792,7 +824,7 @@ async function saveMonthEdit(month) {
 
   // Validate advance settlement doesn't exceed balance before building entries
   const balErrors = [];
-  for (const r of payroll.records) {
+  for (const r of kept) {
     const advEl = document.getElementById('eadv-' + r.empId);
     const advanceSettlement = advEl && advEl.value !== '' ? parseFloat(advEl.value) || 0 : 0;
     if (advanceSettlement <= 0) { if (advEl) advEl.classList.remove('missing'); continue; }
@@ -809,7 +841,7 @@ async function saveMonthEdit(month) {
     return;
   }
 
-  const entries = payroll.records.map(r => {
+  const entries = kept.map(r => {
     const nlEl  = document.getElementById('enl-'  + r.empId);
     const oclEl = document.getElementById('eocl-' + r.empId);
     const nl2El  = document.getElementById('enl2-'  + r.empId);
