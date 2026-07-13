@@ -422,6 +422,20 @@
   </div>
 </div>
 
+<!-- WORKING DAYS MODAL (summary PDF download) -->
+<div class="overlay" id="wdModal">
+  <div class="modal">
+    <div class="modal-pill"></div>
+    <div class="modal-title">Working Days</div>
+    <p style="font-size:13px;color:var(--ink-3);margin:-10px 0 14px;">Set working days for each employee. Shown as a column in the PDF only — amounts are not recalculated.</p>
+    <div class="wd-list" id="wdList"></div>
+    <div class="modal-footer">
+      <button class="btn btn-outline" onclick="closeWdModal()">Cancel</button>
+      <button class="btn btn-primary" onclick="confirmWdDownload()">Download PDF</button>
+    </div>
+  </div>
+</div>
+
 <div class="toasts" id="toasts"></div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>

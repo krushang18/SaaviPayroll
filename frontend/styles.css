@@ -397,6 +397,22 @@ hr.light { border: none; border-top: 1px solid var(--border); margin: 14px 0; }
 .bulk-input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
 .bulk-input[type=number] { -moz-appearance: textfield; appearance: textfield; }
 
+/* WORKING DAYS MODAL */
+.wd-list { max-height: 50vh; overflow-y: auto; }
+.wd-row {
+  display: flex; align-items: center; gap: 12px;
+  padding: 9px 2px; border-bottom: 1px solid var(--border);
+}
+.wd-list .wd-row:last-child { border-bottom: none; }
+.wd-name { flex: 1; min-width: 0; font-size: 14px; font-weight: 500; overflow-wrap: break-word; }
+.wd-row-night .wd-name { padding-left: 18px; font-size: 12px; color: var(--ink-3); font-weight: 400; }
+/* input.bulk-input + .wd-row qualifier needed to outrank the global `input[type=number] { width:100% }` */
+.wd-row input.bulk-input {
+  flex: 0 0 76px; width: 76px; min-height: 38px;
+  padding: 8px; font-size: 15px; font-family: var(--num); text-align: center;
+  border-radius: 7px;
+}
+
 /* MONTH CARDS */
 .month-card {
   background: var(--surface); border: 1px solid var(--border);

@@ -37,6 +37,7 @@ function renderPayrollHistory() {
 // ── Month Detail ──────────────────────────────────────────────────────────────
 let detailView = 'summary';        // 'summary' | 'full'
 let detailMonth = null;
+let wdMonth = null;                // month pending summary-PDF download via the Working Days modal
 
 function showMonthDetail(month) {
   const payroll = state.payrolls.find(p => p.month === month);
@@ -60,7 +61,7 @@ function showMonthDetail(month) {
     <div style="height:16px;"></div>
     <div style="display:flex;gap:10px;">
       <button class="btn btn-outline" style="flex:1;" onclick="editMonthDetail('${payroll.month}')">Edit Payroll</button>
-      <button class="btn btn-outline" onclick="downloadMonthPDF('${payroll.month}')">Download PDF</button>
+      <button class="btn btn-outline" onclick="openWdModal('${payroll.month}')">Download PDF</button>
       <button class="btn btn-outline" onclick="downloadMonthFullPDF('${payroll.month}')">Download Full PDF</button>
       <button class="btn btn-danger-out" onclick="deletePayroll('${payroll.month}')">Delete</button>
     </div>
@@ -274,7 +275,46 @@ function fullSheetHTML(payroll) {
     </div>`;
 }
 
-function downloadMonthPDF(month) {
+// ── Working Days modal — collects display-only WD values before the summary PDF ──
+function openWdModal(month) {
+  const payroll = state.payrolls.find(p => p.month === month);
+  if (!payroll || !payroll.records) { toast('Payroll data not found.', 'error'); return; }
+  wdMonth = month;
+  document.getElementById('wdList').innerHTML = payroll.records.map((r, i) => {
+    const row = `
+      <div class="wd-row">
+        <div class="wd-name">${h(r.empName)}</div>
+        <input type="number" class="bulk-input" id="wd_${i}" value="26" min="0" step="any">
+      </div>`;
+    const nightRow = r.shift2BasePay != null ? `
+      <div class="wd-row wd-row-night">
+        <div class="wd-name">↳ Night shift</div>
+        <input type="number" class="bulk-input" id="wd_${i}_n" value="26" min="0" step="any">
+      </div>` : '';
+    return row + nightRow;
+  }).join('');
+  document.getElementById('wdModal').classList.add('open');
+}
+
+function closeWdModal() { document.getElementById('wdModal').classList.remove('open'); }
+
+function confirmWdDownload() {
+  const payroll = state.payrolls.find(p => p.month === wdMonth);
+  if (!payroll || !payroll.records) { closeWdModal(); return; }
+  const readWd = id => {
+    const el = document.getElementById(id);
+    const v = el ? parseFloat(el.value) : NaN;
+    return Number.isFinite(v) && v >= 0 ? v : 26;   // blank/invalid falls back to the default
+  };
+  const wdValues = payroll.records.map((r, i) => ({
+    day: readWd('wd_' + i),
+    night: r.shift2BasePay != null ? readWd('wd_' + i + '_n') : null,
+  }));
+  closeWdModal();
+  downloadMonthPDF(wdMonth, wdValues);
+}
+
+function downloadMonthPDF(month, wdValues) {
   const payroll = state.payrolls.find(p => p.month === month);
   if (!payroll || !payroll.records) { toast('Payroll data not found.', 'error'); return; }
 
@@ -290,13 +330,15 @@ function downloadMonthPDF(month) {
 
   const rows = [];
   let hasDual = false;
-  payroll.records.forEach(r => {
+  payroll.records.forEach((r, i) => {
+    const wd = (wdValues && wdValues[i]) || { day: 26, night: 26 };
     const advance = r.advanceSettlement || 0;
     const otherSettlements = (r.total || 0) - (r.monthly || 0) + advance;
     rows.push([
       r.empId,
       _empIdFor(r.empId),
       r.empName,
+      String(wd.day),
       fmt(r.monthly),
       advance > 0 ? '-' + fmt(advance) : '—',
       fmtSigned(otherSettlements),
@@ -307,6 +349,7 @@ function downloadMonthPDF(month) {
       const otherSettlements2 = (r.shift2Total || 0) - (r.shift2Monthly || 0);
       rows.push([
         '', '', '   -> Night shift',
+        String(wd.night ?? 26),
         fmt(r.shift2Monthly),
         '—',
         fmtSigned(otherSettlements2),
@@ -317,9 +360,9 @@ function downloadMonthPDF(month) {
 
   doc.autoTable({
     startY: 30,
-    head: [['Sr. No.', 'Emp ID', 'Employee', 'Monthly Salary', 'Advance Settle', 'Other Settlements', 'Final Amount']],
+    head: [['Sr. No.', 'Emp ID', 'Employee', 'Working Days', 'Monthly Salary', 'Advance Settle', 'Other Settlements', 'Final Amount']],
     body: rows,
-    foot: [['', '', 'Grand Total', '', '', '', fmt(payroll.totalPay)]],
+    foot: [['', '', 'Grand Total', '', '', '', '', fmt(payroll.totalPay)]],
     styles: { fontSize: 9 },
     headStyles: { fillColor: [46, 134, 222] },
     footStyles: { fillColor: [240, 240, 240], textColor: [20, 20, 20], fontStyle: 'bold' },
@@ -902,3 +945,5 @@ async function deletePayroll(month) {
     toast(e.message, 'error');
   }
 }
+
+document.getElementById('wdModal').addEventListener('click', e => { if (e.target === e.currentTarget) closeWdModal(); });
