@@ -43,6 +43,55 @@ function renderAdvanceList() {
   }).join('');
 }
 
+// Export a single PDF listing every employee's advance figures (total advanced,
+// total settled, outstanding balance) plus grand totals. Built entirely from
+// state.advanceBalances — no fetch needed. Scoped to the current pay type.
+function downloadAdvanceBalancesPDF() {
+  if (!state.employees.length) { toast('No employees to export.', 'error'); return; }
+
+  const doc = new jspdf.jsPDF();
+  const today = new Date().toISOString().slice(0, 10);
+  const emps = sortByEmpId(state.employees);
+
+  doc.setFontSize(16);
+  doc.text('Advance Balances', 14, 16);
+  doc.setFontSize(10);
+  doc.text(`${state.payType === 'cash' ? 'Cash' : 'Salary'} · ${emps.length} employees · as of ${fmtDate(today)}`, 14, 23);
+
+  const fmt = n => 'Rs. ' + Number(n || 0).toLocaleString('en-IN', { minimumFractionDigits: 0, maximumFractionDigits: 2 });
+
+  let sumAdv = 0, sumSettled = 0, sumBal = 0;
+  const rows = emps.map(e => {
+    const b = state.advanceBalances[e.id] || { totalAdvanced: 0, totalSettled: 0, balance: 0 };
+    sumAdv += b.totalAdvanced || 0;
+    sumSettled += b.totalSettled || 0;
+    sumBal += b.balance || 0;
+    return [e.id, e.empId || '—', e.name, fmt(b.totalAdvanced), fmt(b.totalSettled), fmt(b.balance)];
+  });
+
+  doc.autoTable({
+    startY: 30,
+    head: [['Sr. No.', 'Emp ID', 'Employee', 'Total Advanced', 'Total Settled', 'Outstanding Balance']],
+    body: rows,
+    foot: [['', '', 'Grand Total', fmt(sumAdv), fmt(sumSettled), fmt(sumBal)]],
+    styles: { fontSize: 9 },
+    headStyles: { fillColor: [46, 134, 222] },
+    footStyles: { fillColor: [240, 240, 240], textColor: [20, 20, 20], fontStyle: 'bold' },
+    didParseCell: (data) => {
+      // Redden the Outstanding Balance cell when the employee still owes.
+      if (data.column.index !== 5) return;
+      if (data.row.section === 'body') {
+        const b = state.advanceBalances[emps[data.row.index] && emps[data.row.index].id];
+        if (b && b.balance > 0) data.cell.styles.textColor = [200, 50, 50];
+      } else if (data.row.section === 'foot' && sumBal > 0) {
+        data.cell.styles.textColor = [200, 50, 50];
+      }
+    }
+  });
+
+  doc.save(`Advance_Balances_${state.payType}_${today}.pdf`);
+}
+
 function openAdvanceDetail(empId) {
   document.getElementById('advEmpSelect').value = empId;
   document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));

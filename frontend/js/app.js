@@ -75,7 +75,7 @@ function switchView(v) {
   document.querySelectorAll('.bnav-btn').forEach(b => b.classList.remove('active'));
   const nb = document.getElementById('bnav-' + v); if (nb) nb.classList.add('active');
   document.querySelectorAll('.dtab').forEach(t => t.classList.remove('active'));
-  const map = { employees: 0, calculate: 1, history: 2, advances: 3 };
+  const map = { employees: 0, calculate: 1, history: 2, advances: 3, salaryslip: 4 };
   const tabs = document.querySelectorAll('.dtab');
   if (tabs[map[v]]) tabs[map[v]].classList.add('active');
   currentView = v;
@@ -83,6 +83,7 @@ function switchView(v) {
   if (v === 'calculate') initBulkCalc();
   if (v === 'history') renderPayrollHistory();
   if (v === 'advances') initAdvancesView();
+  if (v === 'salaryslip') initSalarySlipView();
   window.scrollTo(0, 0);
 }
 

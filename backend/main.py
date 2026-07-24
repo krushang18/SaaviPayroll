@@ -1,6 +1,6 @@
 from contextlib import asynccontextmanager
 from datetime import datetime, date, timezone
-from typing import Optional, List
+from typing import Optional, List, Dict
 import math, os, re
 
 from fastapi import FastAPI, HTTPException, Depends, Path
@@ -138,6 +138,7 @@ class PayrollRecordRow(Base):
     shift2_late_count       = Column(Float, nullable=True)
     shift2_late_penalty     = Column(Float, nullable=True)
     shift2_total            = Column(Float, nullable=True)
+    pf_amount               = Column(Float, default=0)
 
 
 # Advances and settlements are also split per pay-type so a cash employee's
@@ -232,6 +233,7 @@ async def lifespan(app: FastAPI):
             "ALTER TABLE employees ADD COLUMN IF NOT EXISTS shift2_working_days INTEGER DEFAULT NULL",
             "ALTER TABLE cash_employees ADD COLUMN IF NOT EXISTS shift2_working_days INTEGER DEFAULT NULL",
             "ALTER TABLE payroll_records ADD COLUMN IF NOT EXISTS shift2_working_days INTEGER DEFAULT NULL",
+            "ALTER TABLE payroll_records ADD COLUMN IF NOT EXISTS pf_amount REAL DEFAULT 0",
         ]:
             try:
                 conn.execute(text(sql))
@@ -368,6 +370,7 @@ def _record_dict(row: PayrollRecordRow) -> dict:
         "shift2LateCount":       row.shift2_late_count,
         "shift2LatePenalty":     row.shift2_late_penalty,
         "shift2Total":           row.shift2_total,
+        "pfAmount":              row.pf_amount or 0,
     }
 
 
@@ -1346,6 +1349,15 @@ def update_payroll(month: str, payload: PayrollIn, db: Session = Depends(get_db)
         p.employee_count = result["employeeCount"]
         p.total_pay = result["totalPay"]
         p.saved_at = saved_at
+        # Snapshot PF deductions (set via the Salary Slip tab) so they survive the
+        # delete-and-reinsert below — _compute_payroll doesn't carry PF.
+        pf_snapshot = {
+            r.emp_id: (r.pf_amount or 0)
+            for r in db.query(PayrollRecordRow).filter(
+                PayrollRecordRow.payroll_month == month,
+                PayrollRecordRow.pay_type == pt,
+            ).all()
+        }
         db.query(PayrollRecordRow).filter(
             PayrollRecordRow.payroll_month == month,
             PayrollRecordRow.pay_type == pt,
@@ -1353,12 +1365,59 @@ def update_payroll(month: str, payload: PayrollIn, db: Session = Depends(get_db)
     else:
         raise HTTPException(404, detail="Payroll not found — use POST to create")
     _persist_records(result, db, pay_type=pt)
+    db.flush()
+    # Re-apply preserved PF, clamped to the (possibly changed) final total.
+    for r in db.query(PayrollRecordRow).filter(
+        PayrollRecordRow.payroll_month == month,
+        PayrollRecordRow.pay_type == pt,
+    ).all():
+        pf = pf_snapshot.get(r.emp_id, 0)
+        if pf:
+            r.pf_amount = min(pf, r.total or 0)
     db.commit()
     db.refresh(p)
     records = db.query(PayrollRecordRow).filter(
         PayrollRecordRow.payroll_month == month,
         PayrollRecordRow.pay_type == pt,
     ).all()
+    records.sort(key=lambda r: _emp_sort_key(r.emp_id))
+    return _payroll_dict(p, records)
+
+
+class PFUpdateIn(BaseModel):
+    pf: Dict[str, float]                 # { empId: pfAmount }
+
+
+@app.put("/payrolls/{month}/pf")
+def update_payroll_pf(
+    month: str = Path(pattern=r"^\d{4}-\d{2}$"),
+    payload: PFUpdateIn = ...,
+    pay_type: str = "salary",
+    db: Session = Depends(get_db),
+):
+    p = db.query(PayrollRow).filter(
+        PayrollRow.month == month, PayrollRow.pay_type == pay_type
+    ).first()
+    if not p:
+        raise HTTPException(404, detail="Payroll not found")
+    records = db.query(PayrollRecordRow).filter(
+        PayrollRecordRow.payroll_month == month,
+        PayrollRecordRow.pay_type == pay_type,
+    ).all()
+    by_id = {r.emp_id: r for r in records}
+    for emp_id, amount in payload.pf.items():
+        rec = by_id.get(emp_id)
+        if rec is None:
+            raise HTTPException(400, detail=f"Employee {emp_id} is not in this payroll.")
+        if amount < 0:
+            raise HTTPException(400, detail="PF amount cannot be negative.")
+        if amount > (rec.total or 0):
+            raise HTTPException(
+                400,
+                detail=f"PF for {rec.emp_name or emp_id} exceeds the final amount.",
+            )
+        rec.pf_amount = amount
+    db.commit()
     records.sort(key=lambda r: _emp_sort_key(r.emp_id))
     return _payroll_dict(p, records)
 
