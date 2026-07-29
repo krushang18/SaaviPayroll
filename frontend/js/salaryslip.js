@@ -98,19 +98,19 @@ function renderSlipEmployees(month) {
             <th style="text-align:left;">Employee</th>
             <th class="num">Present Days</th>
             <th class="num">Present Salary</th>
-            <th class="num">Fine</th>
+            <th class="num">Fine / Late</th>
             <th class="num">Advance Deducted</th>
             <th class="num">Outstanding Advance</th>
             <th class="num">Final Amount</th>
-            <th class="num">PF Deduct</th>
-            <th class="num">Net (after PF)</th>
+            <th class="num">PF / Tax</th>
+            <th class="num">Net (after PF / Tax)</th>
             <th></th>
           </tr>
         </thead>
         <tbody>${rows}</tbody>
       </table>
     </div>
-    <div style="font-size:12px;color:var(--ink-3);margin-top:10px;">Enter a PF amount to enable each slip. Values are saved to this payroll automatically.</div>`;
+    <div style="font-size:12px;color:var(--ink-3);margin-top:10px;">Enter a PF / Tax amount to enable each slip. Values are saved to this payroll automatically.</div>`;
 }
 
 // ── PF input handling ────────────────────────────────────────────────────────────
@@ -163,7 +163,7 @@ async function slipPersistPf(month) {
 // ── Downloads ────────────────────────────────────────────────────────────────────
 async function downloadSlip(month, empId) {
   const input = document.getElementById('spf-' + empId);
-  if (!input || input.value === '') { toast('Enter a PF amount for this employee first.', 'error'); return; }
+  if (!input || input.value === '') { toast('Enter a PF / Tax amount for this employee first.', 'error'); return; }
   let payroll;
   try { payroll = await slipPersistPf(month); }
   catch (e) { toast(e.message || 'Could not save PF.', 'error'); return; }
@@ -184,7 +184,7 @@ async function downloadAllSlips(month) {
     if (!input || input.value === '') missing.push(id);
   });
   if (missing.length) {
-    toast(`Enter a PF amount for ${missing.length} selected employee${missing.length === 1 ? '' : 's'} first.`, 'error');
+    toast(`Enter a PF / Tax amount for ${missing.length} selected employee${missing.length === 1 ? '' : 's'} first.`, 'error');
     return;
   }
 
@@ -250,13 +250,13 @@ function buildSlipDoc(payroll, r, pf) {
     body: [
       ['Present Days', String(slipPresentDays(r))],
       ['Present Salary', fmt(slipPresentSalary(r))],
-      ['Fine', fmt(slipFine(r))],
+      ['Fine / Late', fmt(slipFine(r))],
       ['Advance Deducted This Time', fmt(slipAdvance(r))],
       ['Outstanding Advance', fmt(slipOutstanding(r))],
       ['Final Amount', fmt(final)],
-      ['PF Deduction', fmt(pf)],
+      ['PF / Tax', fmt(pf)],
     ],
-    foot: [['Net Payable (after PF)', fmt(net)]],
+    foot: [['Net Payable (after PF / Tax)', fmt(net)]],
     styles: { fontSize: 10, cellPadding: 3 },
     headStyles: { fillColor: [46, 134, 222] },
     footStyles: { fillColor: [240, 240, 240], textColor: [20, 20, 20], fontStyle: 'bold' },
