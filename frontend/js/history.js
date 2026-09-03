@@ -59,10 +59,11 @@ function showMonthDetail(month) {
     </div>
     <div id="detailSheetHost"></div>
     <div style="height:16px;"></div>
-    <div style="display:flex;gap:10px;">
+    <div style="display:flex;gap:10px;flex-wrap:wrap;">
       <button class="btn btn-outline" style="flex:1;" onclick="editMonthDetail('${payroll.month}')">Edit Payroll</button>
       <button class="btn btn-outline" onclick="openWdModal('${payroll.month}')">Download PDF</button>
       <button class="btn btn-outline" onclick="downloadMonthFullPDF('${payroll.month}')">Download Full PDF</button>
+      <button class="btn btn-outline" onclick="downloadMonthExcel('${payroll.month}')">Download Excel</button>
       <button class="btn btn-danger-out" onclick="deletePayroll('${payroll.month}')">Delete</button>
     </div>
   `;
