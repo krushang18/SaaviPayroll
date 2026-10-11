@@ -228,24 +228,101 @@ function slipDownloadBlob(blob, filename) {
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
+// ── Payslip PDF helpers ───────────────────────────────────────────────────────────
+const SLIP_ORG_NAME = "Saavi Women's Hospital";
+const SLIP_ORG_ADDRESS = 'Near Ishaan 3, opp. Shell Petrol Pump, Anand Nagar, Prahlad Nagar, Ahmedabad, Gujarat 380015, India';
+
+// yyyy-mm-dd → dd-mm-yyyy (payslip shows the full pay-period dates incl. year)
+function slipFullDate(s) {
+  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(s || '');
+  return m ? `${m[3]}-${m[2]}-${m[1]}` : '-';
+}
+
+// Amount in words, Indian numbering (Thousand / Lakh / Crore). e.g. 9194 → "Nine Thousand One Hundred Ninety-Four"
+function slipAmountWords(n) {
+  const ones = ['', 'One', 'Two', 'Three', 'Four', 'Five', 'Six', 'Seven', 'Eight', 'Nine', 'Ten', 'Eleven', 'Twelve',
+    'Thirteen', 'Fourteen', 'Fifteen', 'Sixteen', 'Seventeen', 'Eighteen', 'Nineteen'];
+  const tens = ['', '', 'Twenty', 'Thirty', 'Forty', 'Fifty', 'Sixty', 'Seventy', 'Eighty', 'Ninety'];
+  const two = v => v < 20 ? ones[v] : tens[Math.floor(v / 10)] + (v % 10 ? '-' + ones[v % 10] : '');
+  const three = v => [v >= 100 ? ones[Math.floor(v / 100)] + ' Hundred' : '', two(v % 100)].filter(Boolean).join(' ');
+  const whole = v => {
+    if (v === 0) return 'Zero';
+    const parts = [];
+    const crore = Math.floor(v / 1e7), lakh = Math.floor(v / 1e5) % 100, thousand = Math.floor(v / 1e3) % 100;
+    if (crore)    parts.push(whole(crore) + ' Crore');
+    if (lakh)     parts.push(two(lakh) + ' Lakh');
+    if (thousand) parts.push(two(thousand) + ' Thousand');
+    if (v % 1000) parts.push(three(v % 1000));
+    return parts.join(' ');
+  };
+  const paiseTotal = Math.round(Math.abs(Number(n) || 0) * 100);
+  const rupees = Math.floor(paiseTotal / 100), paise = paiseTotal % 100;
+  let words = whole(rupees);
+  if (paise) words += ' And ' + two(paise) + ' Paise';
+  return (n < 0 ? 'Minus ' : '') + words;
+}
+
+// Shared letterhead for slip PDFs: logo left, hospital name + address right, rule, centred title.
+// Returns the page metrics and palette the slip body is drawn with.
+function slipLetterhead(doc, title) {
+  const L = 14, R = doc.internal.pageSize.getWidth() - 14, W = R - L;
+  const INK = [20, 20, 20], RULE = [90, 98, 110], TINT = [225, 232, 245], BLUE = [46, 110, 200];
+  doc.setTextColor(...INK);
+
+  const logoW = 52, logoH = logoW * SAAVI_LOGO.h / SAAVI_LOGO.w;
+  doc.addImage(SAAVI_LOGO.data, 'PNG', L, 12, logoW, logoH, 'saavi-logo', 'FAST');
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(12);
+  doc.text(SLIP_ORG_NAME, R, 17, { align: 'right' });
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(9);
+  doc.text(doc.splitTextToSize(SLIP_ORG_ADDRESS, 108), R, 22.5, { align: 'right', lineHeightFactor: 1.3 });
+  doc.setDrawColor(...RULE);
+  doc.setLineWidth(0.5);
+  doc.line(L, 33, R, 33);
+
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(12);
+  doc.text(title, (L + R) / 2, 42, { align: 'center' });
+  return { L, R, W, INK, RULE, TINT, BLUE };
+}
+
 // ── Payslip PDF (one employee) — returns { doc, filename } ─────────────────────────
 function buildSlipDoc(payroll, r, pf) {
   const doc = new jspdf.jsPDF();
   const fmt = n => 'Rs. ' + Number(n || 0).toLocaleString('en-IN', { minimumFractionDigits: 0, maximumFractionDigits: 2 });
   const final = slipFinal(r);
   const net = final - (Number(pf) || 0);
+  const emp = state.employees.find(e => e.id === r.empId) || {};
 
-  doc.setFontSize(18);
-  doc.text('Salary Slip', 14, 18);
-  doc.setFontSize(10);
-  doc.text(`${monthName(payroll.month)}  ·  ${payroll.payType === 'cash' ? 'Cash' : 'Salary'}`, 14, 25);
-  doc.setFontSize(13);
-  doc.text(r.empName || '', 14, 35);
-  doc.setFontSize(10);
-  doc.text(`Emp ID: ${r.empId}`, 14, 41);
+  const { L, R, W, INK, RULE, TINT, BLUE } = slipLetterhead(doc, `Payslip for the Month of ${monthName(payroll.month)}`);
+
+  // Employee details box (two label/value pairs per row)
+  const boxY = 48;
+  doc.autoTable({
+    startY: boxY,
+    margin: { left: L, right: 14 },
+    theme: 'plain',
+    body: [
+      ['Name:', r.empName || '-', 'Employee ID:', r.empId || '-'],
+      ['Category:', emp.category || '-', 'Shift:', emp.shiftType || '-'],
+      ['Pay Period:', `${slipFullDate(payroll.fromDate)} to ${slipFullDate(payroll.toDate)}`, 'Pay Type:', payroll.payType === 'cash' ? 'Cash' : 'Salary'],
+    ],
+    styles: { fontSize: 9.5, textColor: INK, cellPadding: { top: 2.6, bottom: 2.6, left: 4, right: 2 } },
+    columnStyles: {
+      0: { fontStyle: 'bold', cellWidth: 30 }, 1: { cellWidth: W / 2 - 30 },
+      2: { fontStyle: 'bold', cellWidth: 30 }, 3: { cellWidth: W / 2 - 30 },
+    },
+  });
+  const boxEnd = doc.lastAutoTable.finalY;
+  doc.setLineWidth(0.4);
+  doc.rect(L, boxY - 1.5, W, boxEnd - boxY + 3);
+  doc.line(L + W / 2, boxY - 1.5, L + W / 2, boxEnd + 1.5);
 
   doc.autoTable({
-    startY: 47,
+    startY: boxEnd + 8,
+    margin: { left: L, right: 14 },
+    theme: 'grid',
     head: [['Particulars', 'Amount']],
     body: [
       ['Present Days', String(slipPresentDays(r))],
@@ -257,11 +334,33 @@ function buildSlipDoc(payroll, r, pf) {
       ['PF / Tax', fmt(pf)],
     ],
     foot: [['Net Payable (after PF / Tax)', fmt(net)]],
-    styles: { fontSize: 10, cellPadding: 3 },
-    headStyles: { fillColor: [46, 134, 222] },
-    footStyles: { fillColor: [240, 240, 240], textColor: [20, 20, 20], fontStyle: 'bold' },
+    styles: { fontSize: 10, cellPadding: 3, textColor: INK, lineColor: RULE, lineWidth: 0.3 },
+    headStyles: { fillColor: TINT, textColor: INK, fontStyle: 'bold' },
+    footStyles: { fillColor: TINT, textColor: INK, fontStyle: 'bold' },
     columnStyles: { 1: { halign: 'right' } },
+    didParseCell: d => { if (d.section !== 'body' && d.column.index === 1) d.cell.styles.halign = 'right'; },
   });
+
+  // Net pay box with the amount in words
+  const netY = doc.lastAutoTable.finalY + 8;
+  const wordLines = doc.setFont('helvetica', 'normal').setFontSize(10)
+    .splitTextToSize(`(INR ${slipAmountWords(net)} only)`, W - 10 - 34);
+  doc.setDrawColor(...BLUE);
+  doc.setLineWidth(0.5);
+  doc.rect(L, netY, W, 21 + wordLines.length * 4.6);
+  let x = L + 5;
+  doc.setFont('helvetica', 'bold').setFontSize(13);
+  doc.text('Net Pay for the Month', x, netY + 10);
+  x += doc.getTextWidth('Net Pay for the Month') + 2.5;
+  doc.setFont('helvetica', 'normal').setFontSize(9);
+  doc.text('( Final Amount - PF / Tax ) =', x, netY + 10);
+  x += doc.getTextWidth('( Final Amount - PF / Tax ) =') + 3;
+  doc.setFont('helvetica', 'bold').setFontSize(13);
+  doc.text(fmt(net), x, netY + 10);
+  doc.setFontSize(10);
+  doc.text('Amount in words:', L + 5, netY + 19);
+  doc.setFont('helvetica', 'normal');
+  doc.text(wordLines, L + 5 + 34, netY + 19, { lineHeightFactor: 1.3 });
 
   // Filename: EmpName_MonthYear  e.g. Asha_Devi_May2026.pdf
   const monthYear = monthName(payroll.month).replace(/\s+/g, '');
