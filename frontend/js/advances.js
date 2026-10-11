@@ -153,6 +153,7 @@ async function renderAdvanceDetail() {
                 <td class="td-mono">${inr(e.amount)}</td>
                 <td>${e.note ? h(e.note) : '—'}</td>
                 <td style="white-space:nowrap;">
+                  <button class="icon-btn" onclick="downloadAdvanceSlip(${e.id})">Slip</button>
                   <button class="icon-btn" onclick="openAdvModal(${e.id})">Edit</button>
                   <button class="icon-btn danger" onclick="openAdvDeleteModal(${e.id}, ${e.amount})">Del</button>
                 </td>
@@ -205,7 +206,8 @@ function openAdvModal(id) {
 
 function closeAdvModal() { document.getElementById('advModal').classList.remove('open'); }
 
-async function saveAdvance() {
+// withSlip: also download the approval slip for the advance just saved.
+async function saveAdvance(withSlip) {
   const empId = document.getElementById('advEmpSelect').value;
   if (!empId) return;
   const dateVal = document.getElementById('advDate').value;
@@ -214,16 +216,18 @@ async function saveAdvance() {
   if (!dateVal) { toast('Please select a date.', 'error'); return; }
   if (isNaN(amount) || amount <= 0) { toast('Enter a valid amount.', 'error'); return; }
   try {
+    let saved;
     if (editingAdvanceId) {
-      await api('PUT', '/advances/' + editingAdvanceId, { empId, date: dateVal, amount, note, payType: state.payType });
+      saved = await api('PUT', '/advances/' + editingAdvanceId, { empId, date: dateVal, amount, note, payType: state.payType });
       toast('Advance updated.', 'success');
     } else {
-      await api('POST', '/advances', { empId, date: dateVal, amount, note, payType: state.payType });
+      saved = await api('POST', '/advances', { empId, date: dateVal, amount, note, payType: state.payType });
       toast('Advance added.', 'success');
     }
     closeAdvModal();
     await refreshAdvanceBalances();
-    renderAdvanceDetail();
+    await renderAdvanceDetail();
+    if (withSlip && saved) downloadAdvanceSlip(saved.id);
   } catch(e) {
     toast(e.message, 'error');
   }
@@ -246,6 +250,128 @@ async function confirmAdvDelete() {
   } catch(e) {
     toast(e.message, 'error');
   }
+}
+
+// ── Advance slip PDF (one advance) ────────────────────────────────────────────
+// Approval slip for a single "Given" entry. Figures are as they stood just before that
+// advance: only entries dated up to it count (same-day advances with a lower id come first),
+// so re-downloading an old slip always gives the same numbers.
+function advanceSlipFigures(history, adv) {
+  let advanced = 0, settled = 0;
+  history.entries.forEach(e => {
+    if (e.type === 'given') {
+      if (e.id !== adv.id && (e.date < adv.date || (e.date === adv.date && e.id < adv.id))) advanced += e.amount || 0;
+    } else if (e.date <= adv.date) {
+      settled += e.amount || 0;
+    }
+  });
+  const before = advanced - settled;
+  return { advanced, settled, before, after: before + (adv.amount || 0) };
+}
+
+function downloadAdvanceSlip(advanceId) {
+  const adv = currentAdvanceHistory && currentAdvanceHistory.entries.find(e => e.type === 'given' && e.id === advanceId);
+  if (!adv) { toast('Advance entry not found.', 'error'); return; }
+  const emp = state.employees.find(e => e.id === currentAdvanceHistory.empId);
+  if (!emp) { toast('Employee not found.', 'error'); return; }
+  const { doc, filename } = buildAdvanceSlipDoc(emp, adv, advanceSlipFigures(currentAdvanceHistory, adv));
+  doc.save(filename);
+}
+
+function buildAdvanceSlipDoc(emp, adv, fig) {
+  const doc = new jspdf.jsPDF();
+  const fmt = n => 'Rs. ' + Number(n || 0).toLocaleString('en-IN', { minimumFractionDigits: 0, maximumFractionDigits: 2 });
+  const { L, R, W, INK, RULE, TINT, BLUE } = slipLetterhead(doc, 'Advance Slip');
+
+  // Employee details box (two label/value pairs per row)
+  const boxY = 48;
+  doc.autoTable({
+    startY: boxY,
+    margin: { left: L, right: 14 },
+    theme: 'plain',
+    body: [
+      ['Name:', emp.name || '-', 'Sr. No.:', emp.id || '-'],
+      ['Category:', emp.category || '-', 'Employee ID:', emp.empId || '-'],
+      ['Advance Date:', slipFullDate(adv.date), 'Pay Type:', state.payType === 'cash' ? 'Cash' : 'Salary'],
+      ['Note:', { content: adv.note || '-', colSpan: 3 }],
+    ],
+    styles: { fontSize: 9.5, textColor: INK, cellPadding: { top: 2.6, bottom: 2.6, left: 4, right: 2 } },
+    columnStyles: {
+      0: { fontStyle: 'bold', cellWidth: 30 }, 1: { cellWidth: W / 2 - 30 },
+      2: { fontStyle: 'bold', cellWidth: 30 }, 3: { cellWidth: W / 2 - 30 },
+    },
+  });
+  const boxEnd = doc.lastAutoTable.finalY;
+  doc.setLineWidth(0.4);
+  doc.rect(L, boxY - 1.5, W, boxEnd - boxY + 3);
+
+  doc.autoTable({
+    startY: boxEnd + 8,
+    margin: { left: L, right: 14 },
+    theme: 'grid',
+    head: [['Particulars', 'Amount']],
+    body: [
+      ['Total Advanced (before this advance)', fmt(fig.advanced)],
+      ['Total Settled', fmt(fig.settled)],
+      ['Outstanding Balance (before this advance)', fmt(fig.before)],
+      ['New Advance', fmt(adv.amount)],
+    ],
+    foot: [['Outstanding Balance (after this advance)', fmt(fig.after)]],
+    styles: { fontSize: 10, cellPadding: 3, textColor: INK, lineColor: RULE, lineWidth: 0.3 },
+    headStyles: { fillColor: TINT, textColor: INK, fontStyle: 'bold' },
+    footStyles: { fillColor: TINT, textColor: INK, fontStyle: 'bold' },
+    columnStyles: { 1: { halign: 'right' } },
+    didParseCell: d => {
+      if (d.section !== 'body' && d.column.index === 1) d.cell.styles.halign = 'right';
+      if (d.section === 'body' && d.row.index === 3) d.cell.styles.fontStyle = 'bold';
+    },
+  });
+
+  // New advance box with the amount in words
+  const advY = doc.lastAutoTable.finalY + 8;
+  const wordLines = doc.setFont('helvetica', 'normal').setFontSize(10)
+    .splitTextToSize(`(INR ${slipAmountWords(adv.amount)} only)`, W - 10 - 34);
+  const advH = 21 + wordLines.length * 4.6;
+  doc.setDrawColor(...BLUE);
+  doc.setLineWidth(0.5);
+  doc.rect(L, advY, W, advH);
+  doc.setFont('helvetica', 'bold').setFontSize(13);
+  doc.text('Advance Amount', L + 5, advY + 10);
+  doc.text(fmt(adv.amount), L + 5 + doc.getTextWidth('Advance Amount') + 5, advY + 10);
+  doc.setFontSize(10);
+  doc.text('Amount in words:', L + 5, advY + 19);
+  doc.setFont('helvetica', 'normal');
+  doc.text(wordLines, L + 5 + 34, advY + 19, { lineHeightFactor: 1.3 });
+
+  // Approval: tick boxes + approved amount, filled in by hand
+  const apY = advY + advH + 8;
+  doc.setDrawColor(...RULE);
+  doc.setLineWidth(0.4);
+  doc.rect(L, apY, W, 20);
+  doc.setFont('helvetica', 'bold').setFontSize(10);
+  doc.text('Approval', L + 5, apY + 8);
+  doc.setFont('helvetica', 'normal');
+  doc.rect(L + 5, apY + 11.5, 4, 4);
+  doc.text('Approved', L + 11.5, apY + 15);
+  doc.rect(L + 40, apY + 11.5, 4, 4);
+  doc.text('Rejected', L + 46.5, apY + 15);
+  doc.text('Approved amount: Rs.', L + 84, apY + 15);
+  doc.line(L + 84 + doc.getTextWidth('Approved amount: Rs.') + 2, apY + 15.5, R - 5, apY + 15.5);
+
+  // Signatures
+  const sigY = apY + 20 + 34, sigW = 66;
+  [[L, 'Employee Signature'], [R - sigW, 'Authorized Signatory']].forEach(([x, label]) => {
+    doc.line(x, sigY, x + sigW, sigY);
+    doc.setFont('helvetica', 'bold').setFontSize(10);
+    doc.text(label, x, sigY + 5.5);
+    doc.setFont('helvetica', 'normal');
+    doc.text('Date:', x, sigY + 13);
+    doc.line(x + 11, sigY + 13.5, x + sigW, sigY + 13.5);
+  });
+
+  // Filename: Advance_EmpName_Date  e.g. Advance_Asha_Devi_26-04-2026.pdf
+  const safeName = (emp.name || 'Employee').trim().replace(/[^\w]+/g, '_').replace(/^_+|_+$/g, '');
+  return { doc, filename: `Advance_${safeName}_${slipFullDate(adv.date)}.pdf` };
 }
 
 document.getElementById('advModal').addEventListener('click', e => { if (e.target === e.currentTarget) closeAdvModal(); });
