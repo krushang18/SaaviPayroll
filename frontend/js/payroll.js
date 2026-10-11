@@ -259,11 +259,13 @@ function computeRowValues(r) {
   const debitHrsPay = r.debitHours * r.hourly;
   const latePenalty = Math.max(0, r.lateCount - 5) * (r.monthly < 10000 ? 50 : 100);
   const homeVisitPay = (r.homeVisits || 0) * (r.homeVisitRate || 0);
-  const total = Math.floor(basePay + otPay + nightPay + homeVisitPay - r.debitAmount - debitHrsPay - latePenalty - r.advanceSettlement);
+  // rawTotal is unrounded so a Day & Night pair can be floored once, on the sum (as the backend does).
+  const rawTotal = basePay + otPay + nightPay + homeVisitPay - r.debitAmount - debitHrsPay - latePenalty - r.advanceSettlement;
+  const total = Math.floor(rawTotal);
   return { dayAdj: Math.floor(dayAdj), basePay: Math.floor(basePay), otPay: Math.floor(otPay),
            nightPay: Math.floor(nightPay), homeVisitPay: Math.floor(homeVisitPay),
            debitHrsPay: Math.floor(debitHrsPay), latePenalty,
-           totalDebit: Math.floor(r.debitAmount + debitHrsPay), total };
+           totalDebit: Math.floor(r.debitAmount + debitHrsPay), rawTotal, total };
 }
 
 // Reads a Day & Night employee's night sub-row inputs and computes its pay fully
@@ -481,7 +483,7 @@ function calcBulkRow(empId, source) {
   if (dbtAmt2El) dbtAmt2El.textContent = (s2.hasInput && s2.totalDebit > 0) ? '-' + inr(s2.totalDebit) : '—';
   if (lp2El) lp2El.textContent = (s2.hasInput && s2.latePenalty > 0) ? '-' + inr(s2.latePenalty) : '—';
   if (tot2El) tot2El.textContent = s2.hasInput ? inr(s2.total) : '—';
-  const total = cv.total + (s2.hasInput ? s2.total : 0);
+  const total = s2.hasInput ? Math.floor(cv.rawTotal + s2.rawTotal) : cv.total;
 
   adjEl.textContent = (dayAdj >= 0 ? '+' : '') + inr(dayAdj);
   adjEl.className = dayAdj > 0 ? 'adj-positive' : dayAdj < 0 ? 'adj-negative' : '';
@@ -725,7 +727,7 @@ async function savePayroll() {
       if (abEl)  abEl.classList.remove('missing');
       if (nlEl)  nlEl.classList.remove('missing');
       if (oclEl) oclEl.classList.remove('missing');
-      entries.push({ empId: emp.id, presentDays, absentDays, normalLeaves, onCallLeaves, extraHours, nightShifts, debitHours, debitAmount, advanceSettlement, homeVisits, shift2PresentDays, shift2AbsentDays, shift2ExtraHours, shift2NormalLeaves, shift2OnCallLeaves, shift2NightShifts, shift2HomeVisits, shift2DebitHours, shift2DebitAmount, shift2LateCount });
+      entries.push({ empId: emp.id, presentDays, absentDays, normalLeaves, onCallLeaves, extraHours, nightShifts, debitHours, debitAmount, lateCount, advanceSettlement, homeVisits, shift2PresentDays, shift2AbsentDays, shift2ExtraHours, shift2NormalLeaves, shift2OnCallLeaves, shift2NightShifts, shift2HomeVisits, shift2DebitHours, shift2DebitAmount, shift2LateCount });
     }
   }
 
@@ -799,6 +801,23 @@ function loadExistingPayroll() {
     set('bpr2-' + r.empId, r.shift2PresentDays);
     set('bab2-' + r.empId, r.shift2AbsentDays);
     set('bhr2-' + r.empId, r.shift2ExtraHours || 0);
+    set('bns2-'  + r.empId, r.shift2NightShifts || 0);
+    set('bhv2-'  + r.empId, r.shift2HomeVisits  || 0);
+    set('bdh2-'  + r.empId, r.shift2DebitHours  || 0);
+    set('bdbt2-' + r.empId, r.shift2DebitAmount || 0);
+    set('blc2-'  + r.empId, r.shift2LateCount   || 0);
+    const nl2El  = document.getElementById('bnl2-'  + r.empId);
+    const ocl2El = document.getElementById('bocl2-' + r.empId);
+    const ef2El  = document.getElementById('befl2-' + r.empId);
+    if (nl2El && ocl2El && r.shift2BasePay != null) {
+      nl2El.disabled  = false; nl2El.value  = r.shift2NormalLeaves != null ? r.shift2NormalLeaves : (r.shift2AbsentDays || 0);
+      ocl2El.disabled = false; ocl2El.value = r.shift2OnCallLeaves != null ? r.shift2OnCallLeaves : 0;
+      if (ef2El) {
+        const nl2 = Math.floor(parseFloat(nl2El.value) || 0);
+        const ocl2 = Math.floor(parseFloat(ocl2El.value) || 0);
+        ef2El.textContent = nl2 + Math.min(ocl2, 2) + Math.max(0, ocl2 - 2) * 2;
+      }
+    }
     // Enable and fill leave fields from saved data
     const nlEl  = document.getElementById('bnl-'  + r.empId);
     const oclEl = document.getElementById('bocl-' + r.empId);

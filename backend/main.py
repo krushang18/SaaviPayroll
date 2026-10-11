@@ -369,12 +369,14 @@ def _record_dict(row: PayrollRecordRow) -> dict:
         "shift2DebitHrsPay":     row.shift2_debit_hrs_pay,
         "shift2LateCount":       row.shift2_late_count,
         "shift2LatePenalty":     row.shift2_late_penalty,
-        "shift2Total":           row.shift2_total,
+        "shift2Total":           math.floor(row.shift2_total) if row.shift2_total is not None else None,
         "pfAmount":              row.pf_amount or 0,
     }
 
 
-def _payroll_dict(p: PayrollRow, records) -> dict:
+def _payroll_dict(p: PayrollRow, records, db: Session) -> dict:
+    # Outstanding advance as it stood at this payroll's period end (after its own deduction).
+    balances = _advance_balances_as_of(db, p.pay_type or "salary", p.to_date)
     return {
         "month":         p.month,
         "fromDate":      p.from_date,
@@ -382,7 +384,7 @@ def _payroll_dict(p: PayrollRow, records) -> dict:
         "compDays":      p.comp_days,
         "employeeCount": p.employee_count,
         "totalPay":      p.total_pay,
-        "records":       [_record_dict(r) for r in records],
+        "records":       [{**_record_dict(r), "advanceBalance": balances.get(r.emp_id, 0)} for r in records],
         "savedAt":       p.saved_at,
         "payType":       p.pay_type or "salary",
     }
@@ -416,6 +418,28 @@ def _advance_balances(db: Session, pay_type: str = "salary", emp_ids: list = Non
         sm = settled_manual.get(emp_id, 0) or 0
         out[emp_id] = {"totalAdvanced": g, "totalSettled": sp + sm, "balance": g - sp - sm}
     return out
+
+
+def _advance_balances_as_of(db: Session, pay_type: str, as_of: str) -> dict:
+    """Returns {empId: outstanding balance} counting only entries dated on or before `as_of`
+    (payroll deductions count by their payroll's period end). Employees with no advance
+    on record are omitted."""
+    Adv, Settle = _adv_model(pay_type), _settle_model(pay_type)
+    given = dict(db.query(Adv.emp_id, func.sum(Adv.amount))
+                   .filter(Adv.date <= as_of).group_by(Adv.emp_id).all())
+    settled_payroll = dict(
+        db.query(PayrollRecordRow.emp_id, func.sum(PayrollRecordRow.advance_settlement))
+          .join(PayrollRow, and_(
+              PayrollRecordRow.payroll_month == PayrollRow.month,
+              PayrollRecordRow.pay_type == PayrollRow.pay_type))
+          .filter(PayrollRecordRow.pay_type == pay_type, PayrollRow.to_date <= as_of)
+          .group_by(PayrollRecordRow.emp_id).all())
+    settled_manual = dict(db.query(Settle.emp_id, func.sum(Settle.amount))
+                            .filter(Settle.date <= as_of).group_by(Settle.emp_id).all())
+    return {
+        emp_id: (g or 0) - (settled_payroll.get(emp_id, 0) or 0) - (settled_manual.get(emp_id, 0) or 0)
+        for emp_id, g in given.items()
+    }
 
 
 def _advance_history(emp_id: str, db: Session, pay_type: str = "salary") -> dict:
@@ -621,6 +645,8 @@ class PayrollIn(BaseModel):
     fromDate: str                       # "2026-03-26"
     toDate: str                         # "2026-04-25"
     payType: str = Field(default="salary")
+    # Edit of a saved month: rows already in that payroll keep the rates they were saved with.
+    useSnapshot: bool = Field(default=False)
     entries: List[PayrollEntry] = Field(min_length=1)
 
     @field_validator('payType')
@@ -870,7 +896,18 @@ def _calc_record(emp: dict, fromDate: str, toDate: str,
         "shift2DebitHrsPay":      shift2["debitHrsPay"] if shift2 else None,
         "shift2LateCount":        shift2["lateCount"] if shift2 else None,
         "shift2LatePenalty":      shift2["latePenalty"] if shift2 else None,
-        "shift2Total":            shift2["total"] if shift2 else None,
+        "shift2Total":            math.floor(shift2["total"]) if shift2 else None,
+    }
+
+
+def _snapshot_emp(rec: PayrollRecordRow) -> dict:
+    """Employee rates as saved on a payroll record (used when editing that payroll)."""
+    return {
+        "id": rec.emp_id, "name": rec.emp_name,
+        "monthly": rec.monthly, "hourly": rec.hourly, "workingDays": rec.working_days or 30,
+        "shiftType": "Day & Night" if rec.shift2_monthly is not None else "Day",
+        "shift2Monthly": rec.shift2_monthly, "shift2Hourly": rec.shift2_hourly,
+        "shift2WorkingDays": rec.shift2_working_days,
     }
 
 
@@ -892,18 +929,36 @@ def _compute_payroll(payload: PayrollIn, db: Session) -> dict:
           .group_by(Settle.emp_id).all()
     )
 
-    home_visit_rate = _get_home_visit_rate(db)
+    live_home_visit_rate = _get_home_visit_rate(db)
+
+    snapshots = {}
+    if payload.useSnapshot:
+        snapshots = {
+            r.emp_id: r for r in db.query(PayrollRecordRow).filter(
+                PayrollRecordRow.payroll_month == payload.month,
+                PayrollRecordRow.pay_type == payload.payType).all()
+        }
 
     for entry in payload.entries:
-        row = db.query(Emp).filter(Emp.id == entry.empId).first()
-        if not row:
-            errors.append(f"Employee {entry.empId} not found")
-            continue
-        emp = _emp_dict(row)
-        night_base, night_appr = _emp_night_rates(row, db)
+        snap = snapshots.get(entry.empId)
+        if snap is not None:
+            # Saved rates — the employee may since have had a raise, changed shift, or been deleted.
+            emp = _snapshot_emp(snap)
+            night_base, night_appr = snap.night_base or 0, snap.night_appr or 0
+            home_visit_rate = snap.home_visit_rate or live_home_visit_rate
+        else:
+            row = db.query(Emp).filter(Emp.id == entry.empId).first()
+            if not row:
+                errors.append(f"Employee {entry.empId} not found")
+                continue
+            emp = _emp_dict(row)
+            night_base, night_appr = _emp_night_rates(row, db)
+            home_visit_rate = live_home_visit_rate
 
         available = (given.get(entry.empId, 0) or 0) - (settled_other_months.get(entry.empId, 0) or 0) - (manual_settled.get(entry.empId, 0) or 0)
-        if entry.advanceSettlement > available:
+        # A settlement already saved on this payroll may always be kept or reduced.
+        saved_settlement = (snap.advance_settlement or 0) if snap is not None else 0
+        if entry.advanceSettlement > max(available, saved_settlement):
             errors.append(
                 f"{emp['name']}: advance settlement ({entry.advanceSettlement}) exceeds outstanding balance ({available})"
             )
@@ -1029,6 +1084,16 @@ def create_employee(emp: Employee, db: Session = Depends(get_db)):
     Emp = _emp_model(emp.payType)
     if db.query(Emp).filter(Emp.id == emp.id).first():
         raise HTTPException(400, detail="Employee ID already exists")
+    # A Sr. No. with saved history belongs to a past employee — reusing it would mix their records.
+    Adv, Settle = _adv_model(emp.payType), _settle_model(emp.payType)
+    if (db.query(PayrollRecordRow).filter(PayrollRecordRow.emp_id == emp.id,
+                                          PayrollRecordRow.pay_type == emp.payType).first()
+            or db.query(Adv).filter(Adv.emp_id == emp.id).first()
+            or db.query(Settle).filter(Settle.emp_id == emp.id).first()):
+        raise HTTPException(
+            400,
+            detail=f"Sr. No. {emp.id} was used by a previous employee and has saved payroll or advance records — use a different Sr. No.",
+        )
     _assert_category_exists(emp.category, db)
     row = Emp(id=emp.id, name=emp.name, monthly=emp.monthly,
               hourly=emp.hourly, working_days=emp.workingDays,
@@ -1072,6 +1137,16 @@ def delete_employee(emp_id: str, pay_type: str = "salary", db: Session = Depends
     row = db.query(Emp).filter(Emp.id == emp_id).first()
     if not row:
         raise HTTPException(404, detail="Employee not found")
+    balance = _advance_balances(db, pay_type, emp_ids=[emp_id]).get(emp_id, {"balance": 0})["balance"]
+    if balance > 0:
+        raise HTTPException(
+            400,
+            detail=f"Cannot delete — {row.name} still has an outstanding advance of {balance}. Settle it first.",
+        )
+    # Nothing owed: the advance ledger goes with the employee (saved payrolls are kept as history).
+    Adv, Settle = _adv_model(pay_type), _settle_model(pay_type)
+    db.query(Adv).filter(Adv.emp_id == emp_id).delete()
+    db.query(Settle).filter(Settle.emp_id == emp_id).delete()
     db.delete(row)
     db.commit()
     return {"deleted": emp_id}
@@ -1129,6 +1204,9 @@ def update_category(cat_id: int, cat: CategoryIn, db: Session = Depends(get_db))
     existing = db.query(CategoryRow).filter(CategoryRow.name == cat.name, CategoryRow.id != cat_id).first()
     if existing:
         raise HTTPException(409, detail="Category name already exists")
+    if cat.name != row.name:
+        for Emp in (EmployeeRow, CashEmployeeRow):
+            db.query(Emp).filter(Emp.category == row.name).update({Emp.category: cat.name})
     row.name = cat.name
     row.night_base = cat.nightBase
     row.night_appr = cat.nightAppr
@@ -1185,6 +1263,12 @@ def update_advance(advance_id: int, adv: AdvanceIn, db: Session = Depends(get_db
     row = db.query(Adv).filter(Adv.id == advance_id).first()
     if not row:
         raise HTTPException(404, detail="Advance entry not found")
+    balance = _advance_balances(db, adv.payType).get(row.emp_id, {"balance": 0})["balance"]
+    if row.amount - adv.amount > balance:
+        raise HTTPException(
+            400,
+            detail=f"Cannot reduce — would make outstanding balance negative (current balance {balance})",
+        )
     row.date = adv.date
     row.amount = adv.amount
     row.note = adv.note
@@ -1275,7 +1359,7 @@ def list_payrolls(pay_type: str = "salary", db: Session = Depends(get_db)):
             PayrollRecordRow.pay_type == pay_type,
         ).all()
         records.sort(key=lambda r: _emp_sort_key(r.emp_id))
-        result.append(_payroll_dict(p, records))
+        result.append(_payroll_dict(p, records, db))
     return result
 
 
@@ -1289,7 +1373,7 @@ def get_payroll(month: str, pay_type: str = "salary", db: Session = Depends(get_
         PayrollRecordRow.pay_type == pay_type,
     ).all()
     records.sort(key=lambda r: _emp_sort_key(r.emp_id))
-    return _payroll_dict(p, records)
+    return _payroll_dict(p, records, db)
 
 
 @app.post("/payrolls/preview")
@@ -1329,7 +1413,7 @@ def save_payroll(payload: PayrollIn, db: Session = Depends(get_db)):
         PayrollRecordRow.pay_type == payload.payType,
     ).all()
     records.sort(key=lambda r: _emp_sort_key(r.emp_id))
-    return _payroll_dict(p, records)
+    return _payroll_dict(p, records, db)
 
 
 @app.put("/payrolls/{month}")
@@ -1381,7 +1465,7 @@ def update_payroll(month: str, payload: PayrollIn, db: Session = Depends(get_db)
         PayrollRecordRow.pay_type == pt,
     ).all()
     records.sort(key=lambda r: _emp_sort_key(r.emp_id))
-    return _payroll_dict(p, records)
+    return _payroll_dict(p, records, db)
 
 
 class PFUpdateIn(BaseModel):
@@ -1419,7 +1503,7 @@ def update_payroll_pf(
         rec.pf_amount = amount
     db.commit()
     records.sort(key=lambda r: _emp_sort_key(r.emp_id))
-    return _payroll_dict(p, records)
+    return _payroll_dict(p, records, db)
 
 
 @app.delete("/payrolls/{month}")

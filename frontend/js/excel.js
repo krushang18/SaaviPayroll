@@ -1,12 +1,18 @@
 // Saavi Payroll — Excel export for saved payrolls. Classic script (file:// compatible); globals shared across files.
-// Mirrors the sheet the accounts desk maintains by hand: 11 columns, dual-shift staff
+// Based on the sheet the accounts desk maintains by hand, plus every addition/deduction that
+// feeds the total (so a row's columns add up to its Total Salary): 15 columns, dual-shift staff
 // split into day / "> Night shift" / "TOTAL=" rows, money written as real numbers.
 
 const XL_ORG = 'SAAVI WOMENS HOSPITAL';
 
 const XL_HEADERS = ['Sr No', 'Emp ID', 'Employee Name', 'Monthly Salary', 'Present',
-                    'Absent', 'EX HRS', 'Day Adj', 'OT Pay', 'Adv', 'Total Salary'];
-const XL_WIDTHS  = [6, 10, 32, 14, 9, 9, 9, 12, 11, 12, 14];
+                    'Absent', 'EX HRS', 'Day Adj', 'OT Pay', 'Night Pay', 'Home Visit',
+                    'Debit', 'Late Cut', 'Adv', 'Total Salary'];
+const XL_WIDTHS  = [6, 10, 32, 14, 9, 9, 9, 12, 11, 11, 11, 11, 11, 12, 14];
+// 1-based column groups by number format
+const XL_COLS_MONEY  = [4, 9, 10, 11, 15];
+const XL_COLS_SIGNED = [8];
+const XL_COLS_CUT    = [12, 13, 14];   // Debit (fine + debit hours), Late Cut, Adv — shown negative, dash when zero
 
 const XL_BLUE  = 'FF2E86DE';   // same blue the PDF exports use — headStyles.fillColor [46,134,222]
 const XL_GREY  = 'FFF0F0F0';
@@ -40,6 +46,10 @@ function _xlBodyRows(payroll) {
       r.extraHours || 0,
       r.dayAdj || 0,
       r.otPay || 0,
+      r.nightPay || 0,
+      r.homeVisitPay || 0,
+      -((r.debitAmount || 0) + (r.debitHrsPay || 0)) || 0,
+      -(r.latePenalty || 0) || 0,
       adv > 0 ? -adv : 0,
       dayTotal,
     ]});
@@ -56,6 +66,10 @@ function _xlBodyRows(payroll) {
       r.shift2ExtraHours || 0,
       r.shift2DayAdj || 0,
       r.shift2OtPay || 0,
+      r.shift2NightPay || 0,
+      r.shift2HomeVisitPay || 0,
+      -((r.shift2DebitAmount || 0) + (r.shift2DebitHrsPay || 0)) || 0,
+      -(r.shift2LatePenalty || 0) || 0,
       null,
       r.shift2Total || 0,
     ]});
@@ -63,7 +77,7 @@ function _xlBodyRows(payroll) {
     rows.push({ kind: 'subtotal', cells: [
       null, null, 'TOTAL=',
       (r.monthly || 0) + (r.shift2Monthly || 0),
-      null, null, null, null, null, null,
+      null, null, null, null, null, null, null, null, null, null,
       r.total || 0,
     ]});
   });
@@ -71,15 +85,20 @@ function _xlBodyRows(payroll) {
 }
 
 function _xlGrandTotalRow(payroll) {
-  let monthly = 0, dayAdj = 0, ot = 0, adv = 0;
+  let monthly = 0, dayAdj = 0, ot = 0, night = 0, home = 0, debit = 0, late = 0, adv = 0;
   payroll.records.forEach(r => {
     monthly += (r.monthly || 0) + (r.shift2Monthly || 0);
     dayAdj  += (r.dayAdj  || 0) + (r.shift2DayAdj  || 0);
     ot      += (r.otPay   || 0) + (r.shift2OtPay   || 0);
+    night   += (r.nightPay || 0) + (r.shift2NightPay || 0);
+    home    += (r.homeVisitPay || 0) + (r.shift2HomeVisitPay || 0);
+    debit   += (r.debitAmount || 0) + (r.debitHrsPay || 0) + (r.shift2DebitAmount || 0) + (r.shift2DebitHrsPay || 0);
+    late    += (r.latePenalty || 0) + (r.shift2LatePenalty || 0);
     adv     += r.advanceSettlement || 0;
   });
   // Attendance columns are left blank — summing present/absent/hours across staff is meaningless.
-  return [null, null, 'GRAND TOTAL', monthly, null, null, null, dayAdj, ot, adv > 0 ? -adv : 0, payroll.totalPay || 0];
+  return [null, null, 'GRAND TOTAL', monthly, null, null, null, dayAdj, ot, night, home,
+          -debit || 0, -late || 0, adv > 0 ? -adv : 0, payroll.totalPay || 0];
 }
 
 async function downloadMonthExcel(month) {
@@ -116,9 +135,9 @@ async function downloadMonthExcel(month) {
     row.eachCell({ includeEmpty: true }, (c, col) => {
       c.border = XL_BORDER;
       c.alignment = { horizontal: col === 3 ? 'left' : (col <= 2 ? 'left' : 'right') };
-      if (col === 4 || col === 9 || col === 11) c.numFmt = XL_FMT_MONEY;
-      if (col === 8)  c.numFmt = XL_FMT_SIGNED;
-      if (col === 10) c.numFmt = XL_FMT_ADV;
+      if (XL_COLS_MONEY.includes(col))  c.numFmt = XL_FMT_MONEY;
+      if (XL_COLS_SIGNED.includes(col)) c.numFmt = XL_FMT_SIGNED;
+      if (XL_COLS_CUT.includes(col))    c.numFmt = XL_FMT_ADV;
       if (kind === 'night') {
         c.font = { italic: true, size: 10, color: { argb: XL_MUTED } };
       } else if (kind === 'subtotal') {
@@ -137,9 +156,9 @@ async function downloadMonthExcel(month) {
     c.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: XL_GREY } };
     c.border = { ...XL_BORDER, top: { style: 'medium', color: { argb: 'FF808080' } } };
     c.alignment = { horizontal: col === 3 ? 'right' : 'right' };
-    if (col === 4 || col === 9 || col === 11) c.numFmt = XL_FMT_MONEY;
-    if (col === 8)  c.numFmt = XL_FMT_SIGNED;
-    if (col === 10) c.numFmt = XL_FMT_ADV;
+    if (XL_COLS_MONEY.includes(col))  c.numFmt = XL_FMT_MONEY;
+    if (XL_COLS_SIGNED.includes(col)) c.numFmt = XL_FMT_SIGNED;
+    if (XL_COLS_CUT.includes(col))    c.numFmt = XL_FMT_ADV;
   });
 
   try {

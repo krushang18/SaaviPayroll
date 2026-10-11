@@ -125,8 +125,9 @@ function summarySheetHTML(payroll) {
         <tbody>
           ${payroll.records.map(r => {
             const adv = r.advanceSettlement || 0;
-            const other = (r.total || 0) - (r.monthly || 0) + adv;   // net of all additions/deductions except advance
             const isDual = r.shift2BasePay != null;
+            // net of the day shift's additions/deductions except advance (r.total also holds the night shift)
+            const other = (r.total || 0) - (isDual ? (r.shift2Total || 0) : 0) - (r.monthly || 0) + adv;
             const row = `
             <tr>
               <td class="td-mono">${h(r.empId)}</td>
@@ -334,7 +335,7 @@ function downloadMonthPDF(month, wdValues) {
   payroll.records.forEach((r, i) => {
     const wd = (wdValues && wdValues[i]) || { day: 26, night: 26 };
     const advance = r.advanceSettlement || 0;
-    const otherSettlements = (r.total || 0) - (r.monthly || 0) + advance;
+    const otherSettlements = (r.total || 0) - (r.shift2BasePay != null ? (r.shift2Total || 0) : 0) - (r.monthly || 0) + advance;
     rows.push([
       r.empId,
       _empIdFor(r.empId),
@@ -649,19 +650,21 @@ function calcEditRow(empId, month, source) {
   const advanceSettlement = advEl && advEl.value !== '' ? parseFloat(advEl.value) || 0 : 0;
   const homeVisits = parseFloat(document.getElementById('ehv-' + empId)?.value) || 0;
 
-  // Use snapshotted rates so editing attendance never alters historical rates.
+  // Use snapshotted rates so editing attendance never alters historical rates
+  // (the backend does the same for this save — see useSnapshot).
+  const homeVisitRate = rec.homeVisitRate || state.settings.homeVisitRate || 0;
   const cv = computeRowValues({
     present, effectiveAbsent, pd, compDays: rec.compDays || 0,
     monthly: rec.monthly, daily: rec.daily, hourly: rec.hourly, workingDays: rec.workingDays,
     nightBase: rec.nightBase || 0, nightAppr: rec.nightAppr || 0,
     extraHours, nightShifts, debitHours, debitAmount: debit, lateCount, advanceSettlement,
-    homeVisits, homeVisitRate: state.settings.homeVisitRate || 0,
+    homeVisits, homeVisitRate: homeVisitRate,
   });
   const { dayAdj } = cv;
   const isDual = rec.shift2BasePay != null;
   const s2 = isDual
     ? _shift2Contribution({ shiftType: 'Day & Night', shift2Monthly: rec.shift2Monthly, shift2Hourly: rec.shift2Hourly, workingDays: rec.workingDays, shift2WorkingDays: rec.shift2WorkingDays }, 'e', empId, pd, rec.compDays || 0,
-        rec.nightBase || 0, rec.nightAppr || 0, state.settings.homeVisitRate || 0)
+        rec.nightBase || 0, rec.nightAppr || 0, homeVisitRate)
     : { hasInput: false, dayAdj: 0, total: 0 };
   const adj2El    = document.getElementById('eadj2-'    + empId);
   const dbtAmt2El = document.getElementById('edbtamt2-' + empId);
@@ -674,7 +677,7 @@ function calcEditRow(empId, month, source) {
   if (dbtAmt2El) dbtAmt2El.textContent = (s2.hasInput && s2.totalDebit > 0) ? '-' + inr(s2.totalDebit) : '—';
   if (lp2El) lp2El.textContent = (s2.hasInput && s2.latePenalty > 0) ? '-' + inr(s2.latePenalty) : '—';
   if (tot2El) tot2El.textContent = s2.hasInput ? inr(s2.total) : '—';
-  const total = cv.total + (s2.hasInput ? s2.total : 0);
+  const total = s2.hasInput ? Math.floor(cv.rawTotal + s2.rawTotal) : cv.total;
 
   const adjEl    = document.getElementById('eadj-'    + empId);
   const dbtAmtEl = document.getElementById('edbtamt-' + empId);
@@ -925,6 +928,7 @@ async function saveMonthEdit(month) {
       toDate:   payroll.toDate,
       entries,
       payType: state.payType,
+      useSnapshot: true,
     });
     state.payrolls = state.payrolls.map(p => p.month === month ? updated : p);
     await refreshAdvanceBalances();

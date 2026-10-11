@@ -14,7 +14,20 @@ function slipFine(r) {
          (r.shift2LatePenalty || 0) + (r.shift2DebitAmount || 0);
 }
 function slipAdvance(r)     { return r.advanceSettlement || 0; }
-function slipOutstanding(r) { return advBalance(r.empId); }
+// Balance as it stood at the payroll's period end (after its own deduction), from the backend.
+function slipOutstanding(r) { return r.advanceBalance != null ? r.advanceBalance : advBalance(r.empId); }
+// The two catch-all rows that make the slip add up to the final amount:
+//   additions  = overtime + night pay + home visits     deductions = debit-hours cut
+// Each saved figure is floored separately, so the odd rupee of rounding is folded into
+// whichever row it belongs to.
+function slipExtras(r) {
+  let additions = (r.otPay || 0) + (r.nightPay || 0) + (r.homeVisitPay || 0) +
+                  (r.shift2OtPay || 0) + (r.shift2NightPay || 0) + (r.shift2HomeVisitPay || 0);
+  let deductions = (r.debitHrsPay || 0) + (r.shift2DebitHrsPay || 0);
+  const gap = slipFinal(r) - (slipPresentSalary(r) + additions - slipFine(r) - deductions - slipAdvance(r));
+  if (gap > 0) additions += gap; else deductions -= gap;
+  return { additions, deductions };
+}
 function slipFinal(r)       { return r.total || 0; }
 
 // ── View entry point ────────────────────────────────────────────────────────────
@@ -67,6 +80,7 @@ function renderSlipEmployees(month) {
   const rows = recs.map(r => {
     const id = r.empId;
     const final = slipFinal(r);
+    const extras = slipExtras(r);
     const pf = (r.pfAmount && r.pfAmount > 0) ? r.pfAmount : '';
     const net = final - (Number(pf) || 0);
     return `
@@ -75,7 +89,9 @@ function renderSlipEmployees(month) {
         <td style="text-align:left;">${h(r.empName)}<div style="font-size:11px;color:var(--ink-3);">${h(id)}</div></td>
         <td class="num">${slipPresentDays(r)}</td>
         <td class="num">${inr(slipPresentSalary(r))}</td>
+        <td class="num">${inr(extras.additions)}</td>
         <td class="num">${inr(slipFine(r))}</td>
+        <td class="num">${inr(extras.deductions)}</td>
         <td class="num">${inr(slipAdvance(r))}</td>
         <td class="num">${inr(slipOutstanding(r))}</td>
         <td class="num">${inr(final)}</td>
@@ -91,14 +107,16 @@ function renderSlipEmployees(month) {
       <button class="btn btn-primary btn-sm" onclick="downloadAllSlips('${month}')">Download All (selected)</button>
     </div>
     <div class="table-wrap">
-      <table class="payroll-summary-table" style="min-width:900px;">
+      <table class="payroll-summary-table" style="min-width:1040px;">
         <thead>
           <tr>
             <th class="pcol-check"><input type="checkbox" id="sSelectAll" checked onchange="slipToggleAll(this.checked)" aria-label="Select all" title="Select all"></th>
             <th style="text-align:left;">Employee</th>
             <th class="num">Present Days</th>
             <th class="num">Present Salary</th>
+            <th class="num">Additions</th>
             <th class="num">Fine / Late</th>
+            <th class="num">Deductions</th>
             <th class="num">Advance Deducted</th>
             <th class="num">Outstanding Advance</th>
             <th class="num">Final Amount</th>
@@ -293,6 +311,7 @@ function buildSlipDoc(payroll, r, pf) {
   const fmt = n => 'Rs. ' + Number(n || 0).toLocaleString('en-IN', { minimumFractionDigits: 0, maximumFractionDigits: 2 });
   const final = slipFinal(r);
   const net = final - (Number(pf) || 0);
+  const extras = slipExtras(r);
   const emp = state.employees.find(e => e.id === r.empId) || {};
 
   const { L, R, W, INK, RULE, TINT, BLUE } = slipLetterhead(doc, `Payslip for the Month of ${monthName(payroll.month)}`);
@@ -327,7 +346,9 @@ function buildSlipDoc(payroll, r, pf) {
     body: [
       ['Present Days', String(slipPresentDays(r))],
       ['Present Salary', fmt(slipPresentSalary(r))],
+      ['Additions', fmt(extras.additions)],
       ['Fine / Late', fmt(slipFine(r))],
+      ['Deductions', fmt(extras.deductions)],
       ['Advance Deducted This Time', fmt(slipAdvance(r))],
       ['Outstanding Advance', fmt(slipOutstanding(r))],
       ['Final Amount', fmt(final)],

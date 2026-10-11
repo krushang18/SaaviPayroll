@@ -215,6 +215,13 @@ async function saveAdvance(withSlip) {
   const note = document.getElementById('advNote').value.trim() || null;
   if (!dateVal) { toast('Please select a date.', 'error'); return; }
   if (isNaN(amount) || amount <= 0) { toast('Enter a valid amount.', 'error'); return; }
+  if (editingAdvanceId && currentAdvanceHistory) {
+    const old = currentAdvanceHistory.entries.find(e => e.type === 'given' && e.id === editingAdvanceId);
+    if (old && old.amount - amount > currentAdvanceHistory.balance) {
+      toast(`Cannot reduce to ${inr(amount)} — it would make the outstanding balance negative (current balance ${inr(currentAdvanceHistory.balance)}).`, 'error');
+      return;
+    }
+  }
   try {
     let saved;
     if (editingAdvanceId) {

@@ -262,6 +262,9 @@ async function saveEmployee() {
       toast('Please enter the night working days (1–31) for a Day & Night employee.', 'error'); return;
     }
   }
+  if (!editingId && state.payrolls.some(p => (p.records || []).some(r => r.empId === id))) {
+    toast(`Sr. No. ${id} was used by a previous employee and has saved payroll records — use a different Sr. No.`, 'error'); return;
+  }
   const empData = { id, empId, name, monthly, workingDays, hourly, category, shiftType, shift2Monthly, shift2Hourly, shift2WorkingDays, payType: state.payType };
   try {
     if (editingId) {
@@ -346,8 +349,14 @@ async function saveCategoryForm() {
   if (!name) { toast('Category name is required.', 'error'); return; }
   try {
     if (editingCatId) {
+      const oldName = (state.categories.find(c => c.id === editingCatId) || {}).name;
       const updated = await api('PUT', '/categories/' + editingCatId, { name, nightBase, nightAppr });
       state.categories = state.categories.map(c => c.id === editingCatId ? updated : c);
+      // A rename carries over to every employee in that category (the backend does the same).
+      if (oldName && oldName !== updated.name) {
+        state.employees.forEach(e => { if (e.category === oldName) e.category = updated.name; });
+        renderEmployeeList();
+      }
       toast('Category updated.', 'success');
     } else {
       const created = await api('POST', '/categories', { name, nightBase, nightAppr });
@@ -382,6 +391,11 @@ function openDeleteModal(id) {
 function closeDeleteModal() { document.getElementById('deleteModal').classList.remove('open'); }
 
 async function confirmDelete() {
+  const owed = advBalance(deletingId);
+  if (owed > 0) {
+    toast(`Cannot delete — outstanding advance of ${inr(owed)}. Settle it first.`, 'error');
+    return;
+  }
   try {
     await api('DELETE', '/employees/' + deletingId + '?pay_type=' + state.payType);
     state.employees = state.employees.filter(e => e.id !== deletingId);
