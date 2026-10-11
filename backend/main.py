@@ -14,7 +14,7 @@ from sqlalchemy.orm import declarative_base, sessionmaker, Session
 _DB_URL = os.getenv("DATABASE_URL")
 if not _DB_URL:
     raise RuntimeError("DATABASE_URL environment variable is required")
-# Render issues the legacy postgres:// scheme; SQLAlchemy requires postgresql://
+# Some hosts hand out the legacy postgres:// scheme; SQLAlchemy requires postgresql://
 if _DB_URL.startswith("postgres://"):
     _DB_URL = _DB_URL.replace("postgres://", "postgresql://", 1)
 
