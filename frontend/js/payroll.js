@@ -1,5 +1,9 @@
 // Saavi Payroll — split from index.html. Classic script (file:// compatible); globals shared across files.
 
+// Debit hours: the first few per shift are free; only hours beyond that are cut.
+// (mirror of DEBIT_FREE_HOURS in backend/main.py)
+const DEBIT_FREE_HOURS = 3;
+
 // ── Bulk Payroll Entry ────────────────────────────────────────────────────────
 let bulkInitialized = false;
 
@@ -55,7 +59,7 @@ function payrollHeadHTML(cfg) {
       <th title="Extra / overtime hours">Ex. Hrs</th>
       <th title="Night shifts worked">Night</th>
       <th title="Home visits">Home</th>
-      <th title="Debit hours docked">Dbt Hrs</th>
+      <th title="Debit hours — first ${DEBIT_FREE_HOURS} per shift are free, the rest are docked">Dbt Hrs</th>
       <th title="Flat debit amount (₹)">Fine</th>
       <th title="Count of 15-min late arrivals">Late 15mins</th>
       <th title="Pay adjustment for attendance vs working days">Day Adj</th>
@@ -256,7 +260,7 @@ function computeRowValues(r) {
   const basePay = r.monthly + dayAdj;
   const otPay   = r.extraHours * r.hourly;
   const nightPay = r.nightShifts * (r.nightBase + r.nightAppr);
-  const debitHrsPay = r.debitHours * r.hourly;
+  const debitHrsPay = Math.max(0, r.debitHours - (r.debitFreeHours || 0)) * r.hourly;
   const latePenalty = Math.max(0, r.lateCount - 5) * (r.monthly < 10000 ? 50 : 100);
   const homeVisitPay = (r.homeVisits || 0) * (r.homeVisitRate || 0);
   // rawTotal is unrounded so a Day & Night pair can be floored once, on the sum (as the backend does).
@@ -271,7 +275,7 @@ function computeRowValues(r) {
 // Reads a Day & Night employee's night sub-row inputs and computes its pay fully
 // independently — own leave breakdown, own additions, own deductions, own total.
 // (mirrors computeRowValues; advanceSettlement is never per-shift, always 0 here)
-function _shift2Contribution(emp, prefix, empId, pd, compDays, nightBase, nightAppr, homeVisitRate) {
+function _shift2Contribution(emp, prefix, empId, pd, compDays, nightBase, nightAppr, homeVisitRate, debitFreeHours) {
   if (emp.shiftType !== 'Day & Night') return { hasInput: false, dayAdj: 0, total: 0 };
   const pr2El  = document.getElementById(prefix + 'pr2-'  + empId);
   const ab2El  = document.getElementById(prefix + 'ab2-'  + empId);
@@ -312,7 +316,7 @@ function _shift2Contribution(emp, prefix, empId, pd, compDays, nightBase, nightA
     present, effectiveAbsent, pd, compDays,
     monthly: emp.shift2Monthly || 0, hourly: emp.shift2Hourly || 0, workingDays: emp.shift2WorkingDays ?? emp.workingDays,
     nightBase: nightBase || 0, nightAppr: nightAppr || 0,
-    extraHours, nightShifts, debitHours, debitAmount, lateCount, advanceSettlement: 0,
+    extraHours, nightShifts, debitHours, debitFreeHours, debitAmount, lateCount, advanceSettlement: 0,
     homeVisits, homeVisitRate: homeVisitRate || 0,
   });
 
@@ -466,12 +470,12 @@ function calcBulkRow(empId, source) {
     present, effectiveAbsent, pd, compDays,
     monthly: emp.monthly, daily, hourly: emp.hourly, workingDays: wd,
     nightBase: cat ? cat.nightBase : 0, nightAppr: cat ? cat.nightAppr : 0,
-    extraHours, nightShifts, debitHours, debitAmount, lateCount, advanceSettlement,
+    extraHours, nightShifts, debitHours, debitFreeHours: DEBIT_FREE_HOURS, debitAmount, lateCount, advanceSettlement,
     homeVisits, homeVisitRate: state.settings.homeVisitRate || 0,
   });
   const { dayAdj } = cv;
   const s2 = _shift2Contribution(emp, 'b', empId, pd, compDays,
-    cat ? cat.nightBase : 0, cat ? cat.nightAppr : 0, state.settings.homeVisitRate || 0);
+    cat ? cat.nightBase : 0, cat ? cat.nightAppr : 0, state.settings.homeVisitRate || 0, DEBIT_FREE_HOURS);
   const adj2El    = document.getElementById('badj2-'    + empId);
   const dbtAmt2El = document.getElementById('bdbtamt2-' + empId);
   const lp2El     = document.getElementById('blp2-'     + empId);

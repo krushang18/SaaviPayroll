@@ -101,6 +101,7 @@ class PayrollRecordRow(Base):
     ot_pay        = Column(Float)
     debit_amount  = Column(Float)
     debit_hours   = Column(Float, default=0)
+    debit_free_hours = Column(Float, default=0)   # free debit hours in force when saved (0 on older rows)
     debit_hrs_pay = Column(Float, default=0)
     advance_settlement = Column(Float, default=0)
     night_shifts     = Column(Float, default=0)
@@ -234,6 +235,7 @@ async def lifespan(app: FastAPI):
             "ALTER TABLE cash_employees ADD COLUMN IF NOT EXISTS shift2_working_days INTEGER DEFAULT NULL",
             "ALTER TABLE payroll_records ADD COLUMN IF NOT EXISTS shift2_working_days INTEGER DEFAULT NULL",
             "ALTER TABLE payroll_records ADD COLUMN IF NOT EXISTS pf_amount REAL DEFAULT 0",
+            "ALTER TABLE payroll_records ADD COLUMN IF NOT EXISTS debit_free_hours REAL DEFAULT 0",
         ]:
             try:
                 conn.execute(text(sql))
@@ -333,6 +335,7 @@ def _record_dict(row: PayrollRecordRow) -> dict:
         "otPay":       row.ot_pay,
         "debitAmount":  row.debit_amount,
         "debitHours":   row.debit_hours or 0,
+        "debitFreeHours": row.debit_free_hours or 0,
         "debitHrsPay":  row.debit_hrs_pay or 0,
         "advanceSettlement": row.advance_settlement or 0,
         "nightShifts":  row.night_shifts or 0,
@@ -717,6 +720,11 @@ class PayrollIn(BaseModel):
 # otPay   = extraHours * hourly
 # total   = floor(basePay + otPay - debitAmount - ...)
 
+# Debit hours: the first few per shift are free; only hours beyond that are cut.
+# (mirror of DEBIT_FREE_HOURS in frontend/js/payroll.js)
+DEBIT_FREE_HOURS = 3
+
+
 def _period_days(from_date: str, to_date: str) -> int:
     d1 = date.fromisoformat(from_date)
     d2 = date.fromisoformat(to_date)
@@ -729,7 +737,7 @@ def _calc_shift(monthly: float, hourly: float, wd: int, pd: int, comp_days: int,
                 extraHours: float, nightShifts: float, nightBase: float, nightAppr: float,
                 homeVisits: float, homeVisitRate: float,
                 debitHours: float, debitAmount: float, lateCount: float,
-                label: str) -> dict:
+                label: str, debitFreeHours: float = DEBIT_FREE_HOURS) -> dict:
     """Computes one shift's full pay independently — leave weighting, attendance,
     additions (OT/night/home), and deductions (debit/late). Each shift owns its
     own 5-free-late-occurrences allowance and its own leave breakdown."""
@@ -774,7 +782,7 @@ def _calc_shift(monthly: float, hourly: float, wd: int, pd: int, comp_days: int,
     dayAdj = diff * daily
     basePay = monthly + dayAdj
     otPay = extraHours * hourly
-    debitHrsPay = debitHours * hourly
+    debitHrsPay = max(0, debitHours - debitFreeHours) * hourly
     nightPay = nightShifts * (nightBase + nightAppr)
     homeVisitPay = homeVisits * homeVisitRate
 
@@ -812,7 +820,8 @@ def _calc_record(emp: dict, fromDate: str, toDate: str,
                  shift2NormalLeaves: Optional[float] = None, shift2OnCallLeaves: Optional[float] = None,
                  shift2NightShifts: float = 0, shift2HomeVisits: float = 0,
                  shift2DebitHours: float = 0, shift2DebitAmount: float = 0,
-                 shift2LateCount: float = 0) -> dict:
+                 shift2LateCount: float = 0,
+                 debitFreeHours: float = DEBIT_FREE_HOURS) -> dict:
     pd = _period_days(fromDate, toDate)
     wd = emp.get("workingDays", 30)
     # Night shift carries its own working-days baseline; fall back to the day value when unset.
@@ -824,7 +833,7 @@ def _calc_record(emp: dict, fromDate: str, toDate: str,
                        presentDays, absentDays, normalLeaves, onCallLeaves,
                        extraHours, nightShifts, nightBase, nightAppr,
                        homeVisits, homeVisitRate, debitHours, debitAmount, lateCount,
-                       emp["name"])
+                       emp["name"], debitFreeHours)
 
     # Day & Night employees: the night shift is a completely independent row —
     # its own leave breakdown, additions, and deductions, computed and totalled separately.
@@ -838,7 +847,7 @@ def _calc_record(emp: dict, fromDate: str, toDate: str,
                               shift2PresentDays, shift2AbsentDays, shift2NormalLeaves, shift2OnCallLeaves,
                               shift2ExtraHours, shift2NightShifts, nightBase, nightAppr,
                               shift2HomeVisits, homeVisitRate, shift2DebitHours, shift2DebitAmount, shift2LateCount,
-                              f"{emp['name']} (night shift)")
+                              f"{emp['name']} (night shift)", debitFreeHours)
 
     total = math.floor(day["total"] + (shift2["total"] if shift2 else 0) - advanceSettlement)
 
@@ -855,6 +864,7 @@ def _calc_record(emp: dict, fromDate: str, toDate: str,
         "compDays":    comp_days,
         "extraHours":  day["extraHours"],
         "debitHours":  day["debitHours"],
+        "debitFreeHours": debitFreeHours,
         "debitHrsPay": day["debitHrsPay"],
         "nightShifts":    day["nightShifts"],
         "nightBase":      day["nightBase"],
@@ -946,6 +956,7 @@ def _compute_payroll(payload: PayrollIn, db: Session) -> dict:
             emp = _snapshot_emp(snap)
             night_base, night_appr = snap.night_base or 0, snap.night_appr or 0
             home_visit_rate = snap.home_visit_rate or live_home_visit_rate
+            debit_free_hours = snap.debit_free_hours or 0   # rows saved before the allowance existed keep "every hour is cut"
         else:
             row = db.query(Emp).filter(Emp.id == entry.empId).first()
             if not row:
@@ -954,6 +965,7 @@ def _compute_payroll(payload: PayrollIn, db: Session) -> dict:
             emp = _emp_dict(row)
             night_base, night_appr = _emp_night_rates(row, db)
             home_visit_rate = live_home_visit_rate
+            debit_free_hours = DEBIT_FREE_HOURS
 
         available = (given.get(entry.empId, 0) or 0) - (settled_other_months.get(entry.empId, 0) or 0) - (manual_settled.get(entry.empId, 0) or 0)
         # A settlement already saved on this payroll may always be kept or reduced.
@@ -977,7 +989,7 @@ def _compute_payroll(payload: PayrollIn, db: Session) -> dict:
                                entry.shift2NormalLeaves, entry.shift2OnCallLeaves,
                                entry.shift2NightShifts, entry.shift2HomeVisits,
                                entry.shift2DebitHours, entry.shift2DebitAmount,
-                               entry.shift2LateCount)
+                               entry.shift2LateCount, debit_free_hours)
             records.append(rec)
         except ValueError as e:
             errors.append(str(e))
@@ -1019,6 +1031,7 @@ def _persist_records(result: dict, db: Session, pay_type: str = "salary"):
             ot_pay=rec["otPay"],
             debit_amount=rec["debitAmount"],
             debit_hours=rec["debitHours"],
+            debit_free_hours=rec.get("debitFreeHours", 0),
             debit_hrs_pay=rec["debitHrsPay"],
             advance_settlement=rec.get("advanceSettlement", 0),
             night_shifts=rec["nightShifts"],

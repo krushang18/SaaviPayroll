@@ -657,14 +657,14 @@ function calcEditRow(empId, month, source) {
     present, effectiveAbsent, pd, compDays: rec.compDays || 0,
     monthly: rec.monthly, daily: rec.daily, hourly: rec.hourly, workingDays: rec.workingDays,
     nightBase: rec.nightBase || 0, nightAppr: rec.nightAppr || 0,
-    extraHours, nightShifts, debitHours, debitAmount: debit, lateCount, advanceSettlement,
+    extraHours, nightShifts, debitHours, debitFreeHours: rec.debitFreeHours || 0, debitAmount: debit, lateCount, advanceSettlement,
     homeVisits, homeVisitRate: homeVisitRate,
   });
   const { dayAdj } = cv;
   const isDual = rec.shift2BasePay != null;
   const s2 = isDual
     ? _shift2Contribution({ shiftType: 'Day & Night', shift2Monthly: rec.shift2Monthly, shift2Hourly: rec.shift2Hourly, workingDays: rec.workingDays, shift2WorkingDays: rec.shift2WorkingDays }, 'e', empId, pd, rec.compDays || 0,
-        rec.nightBase || 0, rec.nightAppr || 0, homeVisitRate)
+        rec.nightBase || 0, rec.nightAppr || 0, homeVisitRate, rec.debitFreeHours || 0)
     : { hasInput: false, dayAdj: 0, total: 0 };
   const adj2El    = document.getElementById('eadj2-'    + empId);
   const dbtAmt2El = document.getElementById('edbtamt2-' + empId);
