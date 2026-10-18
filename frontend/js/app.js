@@ -16,12 +16,29 @@ function renderConnError() {
     <div class="conn-error">
       <div class="ce-icon">${icon('alert')}</div>
       <div class="ce-title">Couldn't reach the server</div>
-      <div class="ce-sub">Make sure the backend is running, then try again.</div>
+      <div class="ce-sub">Please check your connection and try again.</div>
       <button class="btn btn-primary" onclick="init()">Retry</button>
     </div>`;
 }
 
+// Shown on startup while the server is starting up (from 1s on, so a quick answer doesn't flash it).
+function renderConnecting(secs) {
+  document.getElementById('statsRow').innerHTML = '';
+  document.getElementById('empList').innerHTML = `
+    <div class="conn-error">
+      <div class="ce-icon"><span class="spinner spinner-lg"></span></div>
+      <div class="ce-title">Connecting to the server…</div>
+      <div class="ce-sub">This can take up to a minute.</div>
+      <div class="ce-time">${fmtWait(secs)}</div>
+    </div>`;
+}
+
 async function init() {
+  renderEmployeesSkeleton();
+  // Wake the server first with the full-screen message, instead of the small banner.
+  let checked = false;
+  const awake = await waitForServer(secs => { if (checked) renderConnecting(secs); checked = true; });
+  if (!awake) { renderConnError(); return; }
   renderEmployeesSkeleton();
   try {
     const pt = state.payType;
@@ -40,7 +57,7 @@ async function init() {
     _syncPayTypeToggle();
   } catch(e) {
     renderConnError();
-    toast('Could not reach server — is the backend running?', 'error');
+    toast("Couldn't reach the server.", 'error');
     return;
   }
   renderEmployeeList();

@@ -466,6 +466,21 @@ button:focus-visible, .dtab:focus-visible, .bnav-btn:focus-visible,
 .conn-error .ce-icon .ic { width: 38px; height: 38px; stroke-width: 1.5; }
 .conn-error .ce-title { font-size: 18px; font-weight: 600; color: var(--ink-2); margin-bottom: 4px; }
 .conn-error .ce-sub { font-size: 13px; color: var(--ink-3); margin-bottom: 16px; }
+.conn-error .ce-time { font-family: var(--num); font-size: 14px; color: var(--ink-3); }
+
+/* ── Server connecting banner / spinner ────────────────────────────────────── */
+.spinner { display: inline-block; width: 14px; height: 14px; border-radius: 50%;
+  border: 2px solid currentColor; border-right-color: transparent;
+  animation: spin 0.8s linear infinite; vertical-align: -2px; margin-right: 8px; }
+.spinner-lg { width: 34px; height: 34px; border-width: 3px; margin: 0; color: var(--accent); }
+@keyframes spin { to { transform: rotate(360deg); } }
+.server-banner {
+  position: fixed; top: 16px; left: 50%; transform: translateX(-50%); z-index: 310;
+  background: var(--ink); color: #fff; padding: 10px 16px; border-radius: 16px;
+  font-family: var(--sans); font-size: 13px; font-weight: 500; box-shadow: var(--shadow-lg);
+  white-space: nowrap; max-width: calc(100% - 32px);
+}
+.server-banner .sb-time { font-family: var(--num); opacity: 0.7; margin-left: 6px; }
 
 /* ── Payroll column legend ─────────────────────────────────────────────────── */
 .legend { background: var(--surface); border: 1px solid var(--border); border-radius: var(--r);

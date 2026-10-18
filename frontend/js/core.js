@@ -33,13 +33,109 @@ function sortByEmpId(emps) {
 }
 
 // ── API helper ────────────────────────────────────────────────────────────────
+// ── Server connection ─────────────────────────────────────────────────────────
+// The backend sleeps when idle and takes up to a minute to start; until then the
+// /api proxy fails (network error or 502/503/504). Loads wait for it and retry;
+// saves wake it first so they are sent exactly once.
+const SERVER_WAKE_LIMIT_MS = 120000;       // give up waiting after ~2 min
+const SERVER_IDLE_MS = 10 * 60 * 1000;     // no contact this long → may be asleep
+let lastServerContact = 0;
+let serverWakePromise = null;
+
+class ServerUnreachableError extends Error {}
+
+const isGatewayDown = status => status === 502 || status === 503 || status === 504;
+
+async function rawFetch(path, opts) {
+  try {
+    const res = await fetch(API_BASE + path, opts);
+    if (isGatewayDown(res.status)) throw new ServerUnreachableError();
+    lastServerContact = Date.now();
+    return res;
+  } catch (e) {
+    if (e instanceof ServerUnreachableError) throw e;
+    throw new ServerUnreachableError();   // fetch() rejects only on network failure
+  }
+}
+
+// Resolves true once the server answers, false after SERVER_WAKE_LIMIT_MS.
+// onTick(seconds) is called each second while waiting; without it a banner is shown.
+// Concurrent callers share one wait.
+function waitForServer(onTick) {
+  if (serverWakePromise) return serverWakePromise;
+  const started = Date.now();
+  const tick = () => {
+    const secs = Math.floor((Date.now() - started) / 1000);
+    if (onTick) onTick(secs); else showServerBanner(secs);
+  };
+  tick();
+  const timer = setInterval(tick, 1000);
+  serverWakePromise = (async () => {
+    while (Date.now() - started < SERVER_WAKE_LIMIT_MS) {
+      try {
+        await rawFetch('/', { method: 'GET', cache: 'no-store' });
+        return true;
+      } catch (e) {
+        await new Promise(r => setTimeout(r, 3000));
+      }
+    }
+    return false;
+  })().finally(() => {
+    clearInterval(timer);
+    hideServerBanner();
+    serverWakePromise = null;
+  });
+  return serverWakePromise;
+}
+
+function fmtWait(secs) { return Math.floor(secs / 60) + ':' + String(secs % 60).padStart(2, '0'); }
+
+function showServerBanner(secs) {
+  let el = document.getElementById('serverBanner');
+  if (!el) {
+    el = document.createElement('div');
+    el.id = 'serverBanner';
+    el.className = 'server-banner';
+    el.setAttribute('role', 'status');
+    document.body.appendChild(el);
+  }
+  el.innerHTML = `<span class="spinner"></span>Connecting to the server… <span class="sb-time">${fmtWait(secs)}</span>`;
+}
+
+function hideServerBanner() {
+  const el = document.getElementById('serverBanner');
+  if (el) el.remove();
+}
+
+const SERVER_DOWN_MSG = "Couldn't reach the server. Please try again in a minute.";
+
 async function api(method, path, body) {
   const opts = { method, headers: {} };
   if (body !== undefined) {
     opts.headers['Content-Type'] = 'application/json';
     opts.body = JSON.stringify(body);
   }
-  const res = await fetch(API_BASE + path, opts);
+  let res;
+  if (method === 'GET') {
+    // Safe to repeat: wait for the server and retry once it answers.
+    try {
+      res = await rawFetch(path, opts);
+    } catch (e) {
+      if (!(await waitForServer())) throw new Error(SERVER_DOWN_MSG);
+      try { res = await rawFetch(path, opts); } catch (e2) { throw new Error(SERVER_DOWN_MSG); }
+    }
+  } else {
+    // Never re-sent: a request held while the server starts may still be applied after
+    // the proxy gives up. So wake it first if it may be asleep, then send once.
+    if (Date.now() - lastServerContact > SERVER_IDLE_MS && !(await waitForServer())) {
+      throw new Error(SERVER_DOWN_MSG);
+    }
+    try {
+      res = await rawFetch(path, opts);
+    } catch (e) {
+      throw new Error("Couldn't reach the server — this change may not have been saved. Please refresh and check before trying again.");
+    }
+  }
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
     let msg = `Server error ${res.status}`;
