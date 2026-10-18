@@ -132,6 +132,7 @@ async function renderAdvanceDetail() {
       <div class="comp-card"><div class="comp-label">Outstanding Balance</div><div class="comp-val" style="${data.balance > 0 ? 'color:var(--danger);' : ''}">${inr(data.balance)}</div></div>
       <div class="comp-card"><div class="comp-label">Total Advanced</div><div class="comp-val">${inr(data.totalAdvanced)}</div></div>
       <div class="comp-card"><div class="comp-label">Total Settled</div><div class="comp-val green">${inr(data.totalSettled)}</div></div>
+      <div class="comp-card"><div class="comp-label">Monthly Cut</div><div class="comp-val">${data.monthlyCut ? inr(data.monthlyCut) : '—'}</div></div>
     </div>
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;gap:8px;flex-wrap:wrap;">
       <div style="font-family:var(--sans);font-size:20px;font-weight:700;">History</div>
@@ -143,7 +144,7 @@ async function renderAdvanceDetail() {
     ${data.entries.length ? `
       <div class="table-wrap">
         <table>
-          <thead><tr><th>Date</th><th>Type</th><th>Amount</th><th>Note</th><th></th></tr></thead>
+          <thead><tr><th>Date</th><th>Type</th><th>Amount</th><th>Monthly Return</th><th>Note</th><th></th></tr></thead>
           <tbody>
             ${data.entries.map(e => {
               if (e.type === 'given') return `
@@ -151,6 +152,7 @@ async function renderAdvanceDetail() {
                 <td>${fmtDate(e.date)}</td>
                 <td><span class="badge badge-warm">Given</span></td>
                 <td class="td-mono">${inr(e.amount)}</td>
+                <td class="td-mono">${e.monthlyReturn ? `${inr(e.monthlyReturn)} × ${e.returnMonths}` : '—'}</td>
                 <td>${e.note ? h(e.note) : '—'}</td>
                 <td style="white-space:nowrap;">
                   <button class="icon-btn" onclick="downloadAdvanceSlip(${e.id})">Slip</button>
@@ -163,6 +165,7 @@ async function renderAdvanceDetail() {
                 <td>${fmtDate(e.date)}</td>
                 <td><span class="badge badge-green">Settlement</span></td>
                 <td class="td-mono td-green">-${inr(e.amount)}</td>
+                <td>—</td>
                 <td>${e.note ? h(e.note) : '—'}</td>
                 <td style="white-space:nowrap;">
                   <button class="icon-btn" onclick="openAdvSettlementModal(${e.id})">Edit</button>
@@ -174,6 +177,7 @@ async function renderAdvanceDetail() {
                 <td>${fmtDate(e.date)}</td>
                 <td><span class="badge badge-green">Settled · ${monthName(e.month)}</span></td>
                 <td class="td-mono td-green">-${inr(e.amount)}</td>
+                <td>—</td>
                 <td>—</td>
                 <td></td>
               </tr>`;
@@ -195,13 +199,54 @@ function openAdvModal(id) {
     document.getElementById('advDate').value = entry ? entry.date : '';
     document.getElementById('advAmount').value = entry ? entry.amount : '';
     document.getElementById('advNote').value = (entry && entry.note) ? entry.note : '';
+    document.getElementById('advMonthly').value = (entry && entry.monthlyReturn) || '';
+    document.getElementById('advMonths').value = (entry && entry.returnMonths) || '';
   } else {
     document.getElementById('advModalTitle').textContent = 'Add Advance';
     document.getElementById('advDate').value = new Date().toISOString().slice(0, 10);
     document.getElementById('advAmount').value = '';
     document.getElementById('advNote').value = '';
+    document.getElementById('advMonthly').value = '';
+    document.getElementById('advMonths').value = '';
   }
+  // Months auto-fills from amount ÷ per-month until typed by hand; an existing plan counts as typed.
+  document.getElementById('advMonths').dataset.manual = document.getElementById('advMonths').value ? '1' : '';
+  renderAdvCutPreview();
   document.getElementById('advModal').classList.add('open');
+}
+
+function onAdvPlanInput() {
+  const amount = parseFloat(document.getElementById('advAmount').value);
+  const monthly = parseFloat(document.getElementById('advMonthly').value);
+  const monthsEl = document.getElementById('advMonths');
+  if (!monthsEl.dataset.manual) {
+    monthsEl.value = (amount > 0 && monthly > 0) ? Math.ceil(amount / monthly) : '';
+  }
+  renderAdvCutPreview();
+}
+
+function onAdvMonthsInput() {
+  const monthsEl = document.getElementById('advMonths');
+  monthsEl.dataset.manual = monthsEl.value !== '' ? '1' : '';
+  if (!monthsEl.dataset.manual) onAdvPlanInput();
+  else renderAdvCutPreview();
+}
+
+// What payroll will cut each month once this advance is saved: its own plan plus every
+// other advance still being repaid (from the backend's oldest-first figures).
+function renderAdvCutPreview() {
+  const el = document.getElementById('advCutPreview');
+  const amount = parseFloat(document.getElementById('advAmount').value) || 0;
+  const monthly = parseFloat(document.getElementById('advMonthly').value) || 0;
+  const others = currentAdvanceHistory
+    ? currentAdvanceHistory.entries
+        .filter(e => e.type === 'given' && e.id !== editingAdvanceId)
+        .reduce((s, e) => s + (e.monthlyCut || 0), 0)
+    : 0;
+  const own = Math.min(monthly, amount);
+  if (!own && !others) { el.textContent = ''; return; }
+  el.innerHTML = `Monthly cut from salary: <strong style="color:var(--ink)">${inr(own + others)}</strong>`
+    + (others ? ` (this advance ${inr(own)} + other advances ${inr(others)})` : '');
 }
 
 function closeAdvModal() { document.getElementById('advModal').classList.remove('open'); }
@@ -213,8 +258,16 @@ async function saveAdvance(withSlip) {
   const dateVal = document.getElementById('advDate').value;
   const amount = parseFloat(document.getElementById('advAmount').value);
   const note = document.getElementById('advNote').value.trim() || null;
+  const monthlyVal = document.getElementById('advMonthly').value;
+  const monthsVal = document.getElementById('advMonths').value;
+  const monthlyReturn = monthlyVal !== '' ? parseFloat(monthlyVal) : null;
+  const returnMonths = monthsVal !== '' ? Number(monthsVal) : null;
   if (!dateVal) { toast('Please select a date.', 'error'); return; }
   if (isNaN(amount) || amount <= 0) { toast('Enter a valid amount.', 'error'); return; }
+  if (monthlyReturn !== null && (isNaN(monthlyReturn) || monthlyReturn <= 0)) { toast('Enter a valid return per month.', 'error'); return; }
+  if (monthlyReturn !== null && monthlyReturn > amount) { toast('Return per month cannot be more than the advance amount.', 'error'); return; }
+  if (returnMonths !== null && monthlyReturn === null) { toast('Enter the return per month for the months to apply.', 'error'); return; }
+  if (returnMonths !== null && (!Number.isInteger(returnMonths) || returnMonths < 1 || returnMonths > 120)) { toast('No. of months must be a whole number from 1 to 120.', 'error'); return; }
   if (editingAdvanceId && currentAdvanceHistory) {
     const old = currentAdvanceHistory.entries.find(e => e.type === 'given' && e.id === editingAdvanceId);
     if (old && old.amount - amount > currentAdvanceHistory.balance) {
@@ -225,10 +278,10 @@ async function saveAdvance(withSlip) {
   try {
     let saved;
     if (editingAdvanceId) {
-      saved = await api('PUT', '/advances/' + editingAdvanceId, { empId, date: dateVal, amount, note, payType: state.payType });
+      saved = await api('PUT', '/advances/' + editingAdvanceId, { empId, date: dateVal, amount, note, monthlyReturn, returnMonths, payType: state.payType });
       toast('Advance updated.', 'success');
     } else {
-      saved = await api('POST', '/advances', { empId, date: dateVal, amount, note, payType: state.payType });
+      saved = await api('POST', '/advances', { empId, date: dateVal, amount, note, monthlyReturn, returnMonths, payType: state.payType });
       toast('Advance added.', 'success');
     }
     closeAdvModal();
@@ -286,35 +339,40 @@ function downloadAdvanceSlip(advanceId) {
 }
 
 function buildAdvanceSlipDoc(emp, adv, fig) {
-  const doc = new jspdf.jsPDF();
+  const doc = newSlipDoc();
   const fmt = n => 'Rs. ' + Number(n || 0).toLocaleString('en-IN', { minimumFractionDigits: 0, maximumFractionDigits: 2 });
-  const { L, R, W, INK, RULE, TINT, BLUE } = slipLetterhead(doc, 'Advance Slip');
+  const { M, L, R, W, INK, RULE, TINT, BLUE } = slipLetterhead(doc, 'Advance Slip');
+  // Current salary from the live employee record; Day & Night shows both shifts.
+  const salary = emp.shiftType === 'Day & Night' && emp.shift2Monthly != null
+    ? `Day ${fmt(emp.monthly)} / Night ${fmt(emp.shift2Monthly)} per month`
+    : `${fmt(emp.monthly)} per month`;
 
   // Employee details box (two label/value pairs per row)
-  const boxY = 48;
+  const boxY = 39;
   doc.autoTable({
     startY: boxY,
-    margin: { left: L, right: 14 },
+    margin: { left: L, right: M },
     theme: 'plain',
     body: [
       ['Name:', emp.name || '-', 'Sr. No.:', emp.id || '-'],
       ['Category:', emp.category || '-', 'Employee ID:', emp.empId || '-'],
       ['Advance Date:', slipFullDate(adv.date), 'Pay Type:', state.payType === 'cash' ? 'Cash' : 'Salary'],
+      ['Current Salary:', { content: salary, colSpan: 3 }],
       ['Note:', { content: adv.note || '-', colSpan: 3 }],
     ],
-    styles: { fontSize: 9.5, textColor: INK, cellPadding: { top: 2.6, bottom: 2.6, left: 4, right: 2 } },
+    styles: { fontSize: 8, textColor: INK, cellPadding: { top: 1.2, bottom: 1.2, left: 3, right: 1.5 } },
     columnStyles: {
-      0: { fontStyle: 'bold', cellWidth: 30 }, 1: { cellWidth: W / 2 - 30 },
-      2: { fontStyle: 'bold', cellWidth: 30 }, 3: { cellWidth: W / 2 - 30 },
+      0: { fontStyle: 'bold', cellWidth: 27 }, 1: { cellWidth: W / 2 - 27 },
+      2: { fontStyle: 'bold', cellWidth: 24 }, 3: { cellWidth: W / 2 - 24 },
     },
   });
   const boxEnd = doc.lastAutoTable.finalY;
-  doc.setLineWidth(0.4);
-  doc.rect(L, boxY - 1.5, W, boxEnd - boxY + 3);
+  doc.setLineWidth(0.3);
+  doc.rect(L, boxY - 1, W, boxEnd - boxY + 2);
 
   doc.autoTable({
-    startY: boxEnd + 8,
-    margin: { left: L, right: 14 },
+    startY: boxEnd + 4,
+    margin: { left: L, right: M },
     theme: 'grid',
     head: [['Particulars', 'Amount']],
     body: [
@@ -324,7 +382,7 @@ function buildAdvanceSlipDoc(emp, adv, fig) {
       ['New Advance', fmt(adv.amount)],
     ],
     foot: [['Outstanding Balance (after this advance)', fmt(fig.after)]],
-    styles: { fontSize: 10, cellPadding: 3, textColor: INK, lineColor: RULE, lineWidth: 0.3 },
+    styles: { fontSize: 8.5, cellPadding: 1.5, textColor: INK, lineColor: RULE, lineWidth: 0.25 },
     headStyles: { fillColor: TINT, textColor: INK, fontStyle: 'bold' },
     footStyles: { fillColor: TINT, textColor: INK, fontStyle: 'bold' },
     columnStyles: { 1: { halign: 'right' } },
@@ -334,46 +392,53 @@ function buildAdvanceSlipDoc(emp, adv, fig) {
     },
   });
 
-  // New advance box with the amount in words
-  const advY = doc.lastAutoTable.finalY + 8;
-  const wordLines = doc.setFont('helvetica', 'normal').setFontSize(10)
-    .splitTextToSize(`(INR ${slipAmountWords(adv.amount)} only)`, W - 10 - 34);
-  const advH = 21 + wordLines.length * 4.6;
+  // New advance box: amount, amount in words, and the repayment plan
+  const advY = doc.lastAutoTable.finalY + 4;
+  const wordLines = doc.setFont('helvetica', 'normal').setFontSize(8.5)
+    .splitTextToSize(`(INR ${slipAmountWords(adv.amount)} only)`, W - 8 - 28);
+  const planY = advY + 13.5 + wordLines.length * 3.9;
+  const advH = planY - advY + 6.5;
   doc.setDrawColor(...BLUE);
-  doc.setLineWidth(0.5);
-  doc.rect(L, advY, W, advH);
-  doc.setFont('helvetica', 'bold').setFontSize(13);
-  doc.text('Advance Amount', L + 5, advY + 10);
-  doc.text(fmt(adv.amount), L + 5 + doc.getTextWidth('Advance Amount') + 5, advY + 10);
-  doc.setFontSize(10);
-  doc.text('Amount in words:', L + 5, advY + 19);
-  doc.setFont('helvetica', 'normal');
-  doc.text(wordLines, L + 5 + 34, advY + 19, { lineHeightFactor: 1.3 });
-
-  // Approval: tick boxes + approved amount, filled in by hand
-  const apY = advY + advH + 8;
-  doc.setDrawColor(...RULE);
   doc.setLineWidth(0.4);
-  doc.rect(L, apY, W, 20);
-  doc.setFont('helvetica', 'bold').setFontSize(10);
-  doc.text('Approval', L + 5, apY + 8);
+  doc.rect(L, advY, W, advH);
+  doc.setFont('helvetica', 'bold').setFontSize(10.5);
+  doc.text('Advance Amount', L + 4, advY + 7);
+  doc.text(fmt(adv.amount), L + 4 + doc.getTextWidth('Advance Amount') + 4, advY + 7);
+  doc.setFontSize(8.5);
+  doc.text('Amount in words:', L + 4, advY + 13.5);
   doc.setFont('helvetica', 'normal');
-  doc.rect(L + 5, apY + 11.5, 4, 4);
-  doc.text('Approved', L + 11.5, apY + 15);
-  doc.rect(L + 40, apY + 11.5, 4, 4);
-  doc.text('Rejected', L + 46.5, apY + 15);
-  doc.text('Approved amount: Rs.', L + 84, apY + 15);
-  doc.line(L + 84 + doc.getTextWidth('Approved amount: Rs.') + 2, apY + 15.5, R - 5, apY + 15.5);
+  doc.text(wordLines, L + 4 + 28, advY + 13.5, { lineHeightFactor: 1.3 });
+  doc.setDrawColor(...RULE);
+  doc.setLineWidth(0.2);
+  doc.line(L, planY - 1.5, R, planY - 1.5);
+  [[L + 4, 'Return per month:', adv.monthlyReturn ? fmt(adv.monthlyReturn) : '-'],
+   [L + W / 2 + 4, 'No. of months:', adv.returnMonths ? String(adv.returnMonths) : '-']].forEach(([x, label, val]) => {
+    doc.setFont('helvetica', 'bold').text(label, x, planY + 3);
+    const valX = x + doc.getTextWidth(label) + 2;
+    doc.setFont('helvetica', 'normal').text(val, valX, planY + 3);
+  });
 
-  // Signatures
-  const sigY = apY + 20 + 34, sigW = 66;
-  [[L, 'Employee Signature'], [R - sigW, 'Authorized Signatory']].forEach(([x, label]) => {
-    doc.line(x, sigY, x + sigW, sigY);
-    doc.setFont('helvetica', 'bold').setFontSize(10);
-    doc.text(label, x, sigY + 5.5);
+  // Declaration the employee signs under; the fine amount is filled in by hand
+  const decY = advY + advH + 6;
+  const decLines = doc.setFont('helvetica', 'normal').setFontSize(8.5).splitTextToSize(
+    'I will not take a new Advance until the old one is completely paid off. If the full Advance is not '
+    + 'deducted in the agreed-upon month, then a fine of Rs. ____________ per month will be settled in person.', W);
+  doc.setFont('helvetica', 'bold').text('Declaration:', L, decY);
+  doc.setFont('helvetica', 'normal').text(decLines, L, decY + 4.5, { lineHeightFactor: 1.4 });
+  const decEnd = decY + 4.5 + (decLines.length - 1) * 4.2;
+
+  // Signatures: Employee + Dr. Dhaval on the left, Manager on the right
+  const sigW = 54, rowGap = 19, sigY = decEnd + 13;
+  [[L, sigY, 'Employee Signature'], [R - sigW, sigY, 'Manager Signature'],
+   [L, sigY + rowGap, 'Dr. Dhaval Signature']].forEach(([x, y, label]) => {
+    doc.setDrawColor(...INK);
+    doc.setLineWidth(0.3);
+    doc.line(x, y, x + sigW, y);
+    doc.setFont('helvetica', 'bold').setFontSize(8.5);
+    doc.text(label, x, y + 4.5);
     doc.setFont('helvetica', 'normal');
-    doc.text('Date:', x, sigY + 13);
-    doc.line(x + 11, sigY + 13.5, x + sigW, sigY + 13.5);
+    doc.text('Date:', x, y + 10.5);
+    doc.line(x + 9, y + 11, x + sigW, y + 11);
   });
 
   // Filename: Advance_EmpName_Date  e.g. Advance_Asha_Devi_26-04-2026.pdf

@@ -160,10 +160,25 @@ function renderBulkTable() {
   const currentIds = new Set(sortedEmps.map(e => e.id));
   const sameIds = [...currentIds].every(id => existingIds.has(id)) && existingIds.size === currentIds.size;
   const empHash = sortedEmps.map(e => `${e.id}|${e.empId}|${e.name}|${e.monthly}|${e.hourly}|${e.workingDays}|${e.category}|${e.shiftType}|${e.shift2Monthly}|${e.shift2Hourly}|${e.shift2WorkingDays}`).join('\n');
-  if (sameIds && tbody.dataset.empHash === empHash) return;
+  if (sameIds && tbody.dataset.empHash === empHash) { applyAdvanceCuts(); return; }
   tbody.dataset.empHash = empHash;
 
   tbody.innerHTML = sortedEmps.map(e => payrollRowHTML(e, { mode: 'create', prefix: 'b' })).join('');
+  applyAdvanceCuts();
+}
+
+// Pre-fill Adv Settle from each employee's open repayment plans. Leaves alone any value
+// typed by hand or loaded from a saved payroll; refreshes values it filled itself.
+function applyAdvanceCuts() {
+  state.employees.forEach(e => {
+    const el = document.getElementById('badv-' + e.id);
+    if (!el || el.dataset.savedAdv !== undefined) return;
+    if (el.value !== '' && el.value !== el.dataset.autoAdv) return;
+    const cut = advMonthlyCut(e.id);
+    const val = cut > 0 ? String(cut) : '';
+    el.dataset.autoAdv = val;
+    if (el.value !== val) { el.value = val; calcBulkRow(e.id); }
+  });
 }
 
 function onBulkDatesChange() {

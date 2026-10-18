@@ -13,6 +13,11 @@ function advBalance(empId) {
   return (state.advanceBalances[empId] && state.advanceBalances[empId].balance) || 0;
 }
 
+// Total cut from all open advance repayment plans (backend caps it at the balance).
+function advMonthlyCut(empId) {
+  return (state.advanceBalances[empId] && state.advanceBalances[empId].monthlyCut) || 0;
+}
+
 // Mirrors backend _emp_sort_key: numeric Sr. No. sorts numerically, non-numeric
 // IDs sort after all numeric ones (alphabetically among themselves).
 function _empSortKey(id) {

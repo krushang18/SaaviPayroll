@@ -153,11 +153,17 @@ class _AdvanceCols:
     created_at = Column(String, nullable=True)
 
 
-class AdvanceRow(_AdvanceCols, Base):
+# Repayment plan, advances only (settlements don't have one). Both optional.
+class _AdvancePlanCols:
+    monthly_return = Column(Float,   nullable=True)   # amount cut from payroll each month
+    return_months  = Column(Integer, nullable=True)   # no. of months to repay
+
+
+class AdvanceRow(_AdvanceCols, _AdvancePlanCols, Base):
     __tablename__ = "advances"
 
 
-class CashAdvanceRow(_AdvanceCols, Base):
+class CashAdvanceRow(_AdvanceCols, _AdvancePlanCols, Base):
     __tablename__ = "cash_advances"
 
 
@@ -236,6 +242,10 @@ async def lifespan(app: FastAPI):
             "ALTER TABLE payroll_records ADD COLUMN IF NOT EXISTS shift2_working_days INTEGER DEFAULT NULL",
             "ALTER TABLE payroll_records ADD COLUMN IF NOT EXISTS pf_amount REAL DEFAULT 0",
             "ALTER TABLE payroll_records ADD COLUMN IF NOT EXISTS debit_free_hours REAL DEFAULT 0",
+            "ALTER TABLE advances ADD COLUMN IF NOT EXISTS monthly_return REAL DEFAULT NULL",
+            "ALTER TABLE advances ADD COLUMN IF NOT EXISTS return_months INTEGER DEFAULT NULL",
+            "ALTER TABLE cash_advances ADD COLUMN IF NOT EXISTS monthly_return REAL DEFAULT NULL",
+            "ALTER TABLE cash_advances ADD COLUMN IF NOT EXISTS return_months INTEGER DEFAULT NULL",
         ]:
             try:
                 conn.execute(text(sql))
@@ -394,7 +404,37 @@ def _payroll_dict(p: PayrollRow, records, db: Session) -> dict:
 
 
 def _advance_dict(row: AdvanceRow) -> dict:
-    return {"id": row.id, "empId": row.emp_id, "date": row.date, "amount": row.amount, "note": row.note}
+    return {"id": row.id, "empId": row.emp_id, "date": row.date, "amount": row.amount, "note": row.note,
+            "monthlyReturn": row.monthly_return, "returnMonths": row.return_months}
+
+
+def _advance_open_cuts(advances: list, total_settled: float) -> dict:
+    """Settlements repay the oldest advance first (by date, then id). Returns
+    {advanceId: (remaining, cut)} where cut is what that advance's plan takes from
+    the next payroll: min(monthly return, remaining), 0 if repaid or no plan."""
+    left = total_settled or 0
+    out = {}
+    for a in sorted(advances, key=lambda a: (a.date, a.id)):
+        paid = min(a.amount or 0, max(left, 0))
+        left -= paid
+        remaining = (a.amount or 0) - paid
+        cut = min(a.monthly_return, remaining) if a.monthly_return and remaining > 0 else 0
+        out[a.id] = (remaining, cut)
+    return out
+
+
+def _advance_monthly_cuts(db: Session, pay_type: str, balances: dict) -> dict:
+    """Returns {empId: total monthly cut from all open advance plans}, capped at the balance."""
+    Adv = _adv_model(pay_type)
+    by_emp = {}
+    for a in db.query(Adv).filter(Adv.emp_id.in_(list(balances))).all():
+        by_emp.setdefault(a.emp_id, []).append(a)
+    out = {}
+    for emp_id, advs in by_emp.items():
+        b = balances[emp_id]
+        cuts = _advance_open_cuts(advs, b["totalSettled"])
+        out[emp_id] = min(sum(c for _, c in cuts.values()), max(b["balance"], 0))
+    return out
 
 def _advance_settlement_dict(row: AdvanceSettlementRow) -> dict:
     return {"id": row.id, "empId": row.emp_id, "date": row.date, "amount": row.amount, "note": row.note}
@@ -449,8 +489,12 @@ def _advance_history(emp_id: str, db: Session, pay_type: str = "salary") -> dict
     Adv, Settle = _adv_model(pay_type), _settle_model(pay_type)
     advances = (db.query(Adv).filter(Adv.emp_id == emp_id)
                   .order_by(Adv.date.desc()).all())
+    bal = _advance_balances(db, pay_type).get(emp_id, {"totalAdvanced": 0, "totalSettled": 0, "balance": 0})
+    cuts = _advance_open_cuts(advances, bal["totalSettled"])
     entries = [
-        {"type": "given", "id": a.id, "date": a.date, "amount": a.amount, "note": a.note}
+        {"type": "given", "id": a.id, "date": a.date, "amount": a.amount, "note": a.note,
+         "monthlyReturn": a.monthly_return, "returnMonths": a.return_months,
+         "remaining": cuts[a.id][0], "monthlyCut": cuts[a.id][1]}
         for a in advances
     ]
     settled_rows = (db.query(PayrollRecordRow, PayrollRow)
@@ -474,8 +518,8 @@ def _advance_history(emp_id: str, db: Session, pay_type: str = "salary") -> dict
             "amount": ms.amount, "note": ms.note,
         })
     entries.sort(key=lambda e: e["date"], reverse=True)
-    bal = _advance_balances(db, pay_type).get(emp_id, {"totalAdvanced": 0, "totalSettled": 0, "balance": 0})
-    return {"empId": emp_id, **bal, "entries": entries}
+    monthly_cut = min(sum(c for _, c in cuts.values()), max(bal["balance"], 0))
+    return {"empId": emp_id, **bal, "monthlyCut": monthly_cut, "entries": entries}
 
 
 # ── Pydantic models ───────────────────────────────────────────────────────────
@@ -566,6 +610,21 @@ class AdvanceIn(BaseModel):
     amount: float  = Field(gt=0)
     note: Optional[str] = None
     payType: str   = Field(default="salary")
+    monthlyReturn: Optional[float] = Field(default=None, gt=0)
+    returnMonths: Optional[int]    = Field(default=None, ge=1, le=120)
+
+    @model_validator(mode='after')
+    def _check_plan(self):
+        # Months defaults to amount ÷ per-month (rounded up) but may be set by hand.
+        if self.monthlyReturn is None:
+            if self.returnMonths is not None:
+                raise ValueError("returnMonths needs monthlyReturn")
+            return self
+        if self.monthlyReturn > self.amount:
+            raise ValueError("monthlyReturn cannot be more than the advance amount")
+        if self.returnMonths is None:
+            self.returnMonths = math.ceil(self.amount / self.monthlyReturn)
+        return self
 
     @field_validator('date')
     @classmethod
@@ -1247,7 +1306,8 @@ def delete_category(cat_id: int, db: Session = Depends(get_db)):
 def get_advance_balances(pay_type: str = "salary", db: Session = Depends(get_db)):
     group_ids = [eid for (eid,) in db.query(_emp_model(pay_type).id).all()]
     balances = _advance_balances(db, pay_type, emp_ids=group_ids)
-    return [{"empId": emp_id, **v} for emp_id, v in balances.items()]
+    cuts = _advance_monthly_cuts(db, pay_type, balances)
+    return [{"empId": emp_id, **v, "monthlyCut": cuts.get(emp_id, 0)} for emp_id, v in balances.items()]
 
 
 @app.get("/advances/{emp_id}")
@@ -1263,6 +1323,7 @@ def create_advance(adv: AdvanceIn, db: Session = Depends(get_db)):
     if not db.query(Emp).filter(Emp.id == adv.empId).first():
         raise HTTPException(404, detail="Employee not found")
     row = Adv(emp_id=adv.empId, date=adv.date, amount=adv.amount, note=adv.note,
+              monthly_return=adv.monthlyReturn, return_months=adv.returnMonths,
               created_at=datetime.now(timezone.utc).isoformat())
     db.add(row)
     db.commit()
@@ -1285,6 +1346,8 @@ def update_advance(advance_id: int, adv: AdvanceIn, db: Session = Depends(get_db
     row.date = adv.date
     row.amount = adv.amount
     row.note = adv.note
+    row.monthly_return = adv.monthlyReturn
+    row.return_months = adv.returnMonths
     db.commit()
     db.refresh(row)
     return _advance_dict(row)
