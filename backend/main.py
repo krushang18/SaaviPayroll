@@ -198,6 +198,7 @@ class SonoEntryRow(Base):
     date       = Column(String, nullable=False, unique=True, index=True)   # "YYYY-MM-DD"
     counts     = Column(JSON, nullable=False)    # {type: patients} for SONO_COUNT_TYPES
     counseling = Column(Integer, nullable=False, default=0)   # counseling / others, whole ₹
+    counseling_patients = Column(Integer, nullable=False, default=0)
     rates      = Column(JSON, nullable=False)    # snapshot of sono_settings.rates when created
     created_at = Column(DateTime(timezone=True), nullable=False)
     updated_at = Column(DateTime(timezone=True), nullable=False)
@@ -269,6 +270,7 @@ async def lifespan(app: FastAPI):
             "ALTER TABLE cash_advances ADD COLUMN IF NOT EXISTS monthly_return REAL DEFAULT NULL",
             "ALTER TABLE cash_advances ADD COLUMN IF NOT EXISTS return_months INTEGER DEFAULT NULL",
             "ALTER TABLE sono_entries ADD COLUMN IF NOT EXISTS counseling INTEGER NOT NULL DEFAULT 0",
+            "ALTER TABLE sono_entries ADD COLUMN IF NOT EXISTS counseling_patients INTEGER NOT NULL DEFAULT 0",
         ]:
             try:
                 conn.execute(text(sql))
@@ -1621,8 +1623,8 @@ def delete_payroll(month: str = Path(pattern=r"^\d{4}-\d{2}$"), pay_type: str = 
 
 # ── Sonography ───────────────────────────────────────────────────────────────
 # Patient types are paid rate × patients; FOC patients are only counted (no rate, no
-# pay). Counseling / others is a ₹ amount entered now and then, and the doctor gets
-# their % of it. Amounts are kept to the paisa: the maths runs in whole paise so the
+# pay). Counseling / others is a patient count plus a ₹ amount entered now and then;
+# the doctor gets their % of the amount. Amounts are kept to the paisa: the maths runs in whole paise so the
 # frontend (computeSonoRow in sonography.js) gets the exact same numbers.
 SONO_PATIENT_TYPES = ("nt_ano", "gs", "nt_twins", "gs_twins")
 SONO_COUNT_TYPES = SONO_PATIENT_TYPES + ("foc",)
@@ -1673,8 +1675,8 @@ def _sono_row_paise(e: SonoEntryRow) -> tuple:
     return sum(p[4] for p in parts), sum(p[5] for p in parts)
 
 
-def _sono_patients(counts: dict) -> int:
-    return sum(counts.get(t, 0) for t in SONO_COUNT_TYPES)
+def _sono_patients(e: SonoEntryRow) -> int:
+    return sum(e.counts.get(t, 0) for t in SONO_COUNT_TYPES) + e.counseling_patients
 
 
 def _sono_totals(entries) -> dict:
@@ -1686,35 +1688,39 @@ def _sono_totals(entries) -> dict:
         doctor += d
         for t in SONO_COUNT_TYPES:
             counts[t] += e.counts.get(t, 0)
+    counseling_patients = sum(e.counseling_patients for e in entries)
     tds = _half_up_div(doctor * SONO_TDS_PCT, 100)
-    return {"days": len(entries), "counts": counts, "patients": sum(counts.values()),
-            "counseling": sum(e.counseling for e in entries),
+    return {"days": len(entries), "counts": counts, "patients": sum(counts.values()) + counseling_patients,
+            "counseling": sum(e.counseling for e in entries), "counselingPatients": counseling_patients,
             "billed": billed / 100, "doctorShare": doctor / 100, "tds": tds / 100,
             "netPay": (doctor - tds) / 100, "hospitalShare": (billed - doctor) / 100}
 
 
 def _sono_lines(entries) -> list:
     """Month breakdown per type, split by rate when rates changed during the month:
-    [{type, rate, pct, qty (patients, or ₹ for counseling), doctorShare}]. The doctor's
-    shares add up exactly to the month's doctorShare."""
+    [{type, rate, pct, patients, amount (counseling ₹, else null), doctorShare}]. The
+    doctor's shares add up exactly to the month's doctorShare."""
     groups = {}
     for e in entries:
         for t, rate, pct, qty, _, doctor in _sono_parts_paise(e):
             if qty:
-                g = groups.setdefault((t, rate, pct), [0, 0])
-                g[0] += qty
-                g[1] += doctor
+                g = groups.setdefault((t, rate, pct), [0, 0, 0])
+                g[0] += e.counseling_patients if t == "counseling" else qty
+                g[1] += qty if t == "counseling" else 0
+                g[2] += doctor
         if e.counts.get("foc", 0):
-            groups.setdefault(("foc", None, None), [0, 0])[0] += e.counts["foc"]
+            groups.setdefault(("foc", None, None), [0, 0, 0])[0] += e.counts["foc"]
     order = SONO_PATIENT_TYPES + ("foc", "counseling")
-    return [{"type": t, "rate": rate, "pct": pct, "qty": qty, "doctorShare": doctor / 100}
-            for (t, rate, pct), (qty, doctor) in sorted(groups.items(), key=lambda kv: order.index(kv[0][0]))]
+    return [{"type": t, "rate": rate, "pct": pct, "patients": patients,
+             "amount": amount if t == "counseling" else None, "doctorShare": doctor / 100}
+            for (t, rate, pct), (patients, amount, doctor) in sorted(groups.items(), key=lambda kv: order.index(kv[0][0]))]
 
 
 def _sono_entry_dict(row: SonoEntryRow) -> dict:
     billed, doctor = _sono_row_paise(row)
-    return {"id": row.id, "date": row.date, "counts": row.counts, "counseling": row.counseling, "rates": row.rates,
-            "patients": _sono_patients(row.counts), "billed": billed / 100, "doctorShare": doctor / 100}
+    return {"id": row.id, "date": row.date, "counts": row.counts, "counseling": row.counseling,
+            "counselingPatients": row.counseling_patients, "rates": row.rates,
+            "patients": _sono_patients(row), "billed": billed / 100, "doctorShare": doctor / 100}
 
 
 def _sono_today() -> str:
@@ -1757,6 +1763,7 @@ class SonoEntryIn(BaseModel):
     date: str = Field(min_length=1)    # "YYYY-MM-DD"
     counts: Dict[str, int]
     counseling: int = Field(default=0, ge=0, le=SONO_MAX_COUNSELING)   # whole ₹
+    counselingPatients: int = Field(default=0, ge=0, le=SONO_MAX_COUNT)
 
     @field_validator('date')
     @classmethod
@@ -1778,8 +1785,10 @@ class SonoEntryIn(BaseModel):
 
     @model_validator(mode='after')
     def _not_empty(self):
+        if bool(self.counseling) != bool(self.counselingPatients):
+            raise ValueError("Enter both the counseling patients and amount, or neither")
         if not any(self.counts.values()) and not self.counseling:
-            raise ValueError("Enter at least one patient or a counseling amount")
+            raise ValueError("Enter at least one patient")
         return self
 
 
@@ -1842,7 +1851,8 @@ def create_sono_entry(e: SonoEntryIn, db: Session = Depends(get_db)):
     if db.query(SonoEntryRow).filter(SonoEntryRow.date == e.date).first():
         raise HTTPException(409, detail=f"{e.date} already has an entry. Edit that one instead.")
     now = _utcnow()
-    row = SonoEntryRow(date=e.date, counts=e.counts, counseling=e.counseling, rates=rates, created_at=now, updated_at=now)
+    row = SonoEntryRow(date=e.date, counts=e.counts, counseling=e.counseling,
+                       counseling_patients=e.counselingPatients, rates=rates, created_at=now, updated_at=now)
     db.add(row)
     db.commit()
     db.refresh(row)
@@ -1859,6 +1869,7 @@ def update_sono_entry(entry_id: int, e: SonoEntryIn, db: Session = Depends(get_d
         raise HTTPException(400, detail="The date of an entry cannot be changed.")
     row.counts = e.counts         # rates stay as saved on the row
     row.counseling = e.counseling
+    row.counseling_patients = e.counselingPatients
     row.updated_at = _utcnow()
     db.commit()
     db.refresh(row)

@@ -1,8 +1,8 @@
 // Saavi Payroll — split from index.html. Classic script (file:// compatible); globals shared across files.
 
 // ── Sonography (visiting doctor's pay) ────────────────────────────────────────
-// One row per date with the patient count per type plus any counseling / others ₹
-// amount (entered now and then; the doctor gets their % of it). Not linked to payroll.
+// One row per date with the patient count per type plus any counseling / others
+// patients and ₹ amount (entered now and then; the doctor gets their % of the amount). Not linked to payroll.
 // Each row keeps the rates it was saved with; month totals and TDS come from the backend.
 const SONO_PATIENT_TYPES = ['nt_ano', 'gs', 'nt_twins', 'gs_twins'];
 const SONO_COUNT_TYPES = [...SONO_PATIENT_TYPES, 'foc'];
@@ -23,12 +23,13 @@ function sonoToday() {
 function _halfUpDiv(n, d) { return Math.floor((2 * n + d) / (2 * d)); }
 
 // Mirrors backend _sono_row_paise: whole paise, doctor's share rounded half up per line.
-function computeSonoRow(counts, counseling, rates) {
+function computeSonoRow(counts, counseling, counselingPatients, rates) {
   let billed = 0, doctor = 0;
   const addLine = (base, pct) => { billed += base; doctor += _halfUpDiv(base * Math.round(pct * 100), 10000); };
   SONO_PATIENT_TYPES.forEach(t => addLine((counts[t] || 0) * Math.round(rates[t].rate * 100), rates[t].pct));
   addLine((counseling || 0) * 100, rates.counseling.pct);
-  return { billed: billed / 100, doctorShare: doctor / 100, patients: SONO_COUNT_TYPES.reduce((s, t) => s + (counts[t] || 0), 0) };
+  const patients = SONO_COUNT_TYPES.reduce((s, t) => s + (counts[t] || 0), 0) + (counselingPatients || 0);
+  return { billed: billed / 100, doctorShare: doctor / 100, patients };
 }
 
 async function initSonographyView() {
@@ -80,8 +81,14 @@ function renderSonoEntryCard() {
                    oninput="clampRange(this); updateSonoPreview()">
             <div class="sono-rate" id="sonoRate-${t}"></div>
           </div>`).join('')}
+          <div class="form-group sono-counsel-start">
+            <label for="sonoCounselingPt" title="${SONO_LABELS.counseling} patients">Counseling PT</label>
+            <input type="number" id="sonoCounselingPt" min="0" max="${SONO_MAX_COUNT}" step="1" inputmode="numeric" placeholder="0"
+                   oninput="clampRange(this); updateSonoPreview()">
+            <div class="sono-rate">incl. others</div>
+          </div>
           <div class="form-group">
-            <label for="sonoCounseling">${SONO_LABELS.counseling} (₹)</label>
+            <label for="sonoCounseling" title="${SONO_LABELS.counseling} amount">Counseling ₹</label>
             <input type="number" id="sonoCounseling" min="0" max="${SONO_MAX_COUNSELING}" step="1" inputmode="numeric" placeholder="0"
                    oninput="clampRange(this); updateSonoPreview()">
             <div class="sono-rate" id="sonoRate-counseling"></div>
@@ -110,6 +117,7 @@ async function onSonoDateChange() {
     document.getElementById('sonoCount-' + t).value = entry && entry.counts[t] ? entry.counts[t] : '';
   });
   document.getElementById('sonoCounseling').value = entry && entry.counseling ? entry.counseling : '';
+  document.getElementById('sonoCounselingPt').value = entry && entry.counselingPatients ? entry.counselingPatients : '';
   updateSonoPreview();
 }
 
@@ -125,6 +133,7 @@ function readSonoCounts() {
 }
 
 function readSonoCounseling() { return _sonoInputNum('sonoCounseling'); }
+function readSonoCounselingPt() { return _sonoInputNum('sonoCounselingPt'); }
 
 function updateSonoPreview() {
   const rates = sonoFormRates();
@@ -133,7 +142,7 @@ function updateSonoPreview() {
   });
   document.getElementById('sonoRate-foc').textContent = 'count only';
   document.getElementById('sonoRate-counseling').textContent = `${rates.counseling.pct}% of amount`;
-  const r = computeSonoRow(readSonoCounts(), readSonoCounseling(), rates);
+  const r = computeSonoRow(readSonoCounts(), readSonoCounseling(), readSonoCounselingPt(), rates);
   document.getElementById('sonoPreview').innerHTML = `
     <div><span class="comp-label">P.T. No</span><strong>${r.patients}</strong></div>
     <div><span class="comp-label">Total billed</span><strong>${inr2(r.billed)}</strong></div>
@@ -168,12 +177,18 @@ async function saveSonoEntry() {
     toast(`${SONO_LABELS.counseling} must be whole rupees from 0 to ${SONO_MAX_COUNSELING.toLocaleString('en-IN')}.`, 'error');
     return;
   }
-  if (!SONO_COUNT_TYPES.some(t => counts[t] > 0) && !counseling) { toast('Enter at least one patient or a counseling amount.', 'error'); return; }
+  const counselingPatients = readSonoCounselingPt();
+  if (!Number.isInteger(counselingPatients) || counselingPatients < 0 || counselingPatients > SONO_MAX_COUNT) {
+    toast(`${SONO_LABELS.counseling} patients must be a whole number from 0 to ${SONO_MAX_COUNT}.`, 'error');
+    return;
+  }
+  if (!counseling !== !counselingPatients) { toast('Enter both the counseling patients and amount, or neither.', 'error'); return; }
+  if (!SONO_COUNT_TYPES.some(t => counts[t] > 0) && !counseling) { toast('Enter at least one patient.', 'error'); return; }
   const btn = document.getElementById('sonoSaveBtn');
   btn.disabled = true;
   try {
-    if (sono.editing) await api('PUT', '/sonography/entries/' + sono.editing.id, { date: d, counts, counseling });
-    else await api('POST', '/sonography/entries', { date: d, counts, counseling });
+    if (sono.editing) await api('PUT', '/sonography/entries/' + sono.editing.id, { date: d, counts, counseling, counselingPatients });
+    else await api('POST', '/sonography/entries', { date: d, counts, counseling, counselingPatients });
     toast(sono.editing ? `Updated ${fmtDate(d)}.` : `Saved ${fmtDate(d)}.`, 'success');
     await loadSonoMonth(d.slice(0, 7));
     onSonoDateChange();
@@ -234,6 +249,7 @@ function renderSonoMonth() {
       <td>${fmtDate(e.date)}</td>
       <td class="num"><strong>${e.patients}</strong></td>
       ${SONO_COUNT_TYPES.map(k => `<td class="num">${e.counts[k] || '<span class="muted">—</span>'}</td>`).join('')}
+      <td class="num">${e.counselingPatients || '<span class="muted">—</span>'}</td>
       <td class="num">${e.counseling ? inr(e.counseling) : '<span class="muted">—</span>'}</td>
       <td class="num">${inr2(e.billed)}</td>
       <td class="num">${inr2(e.doctorShare)}</td>
@@ -269,6 +285,7 @@ function renderSonoMonth() {
         <thead><tr>
           <th>Date</th><th class="num">P.T. No</th>
           ${SONO_COUNT_TYPES.map(k => `<th class="num">${SONO_LABELS[k]}</th>`).join('')}
+          <th class="num">${SONO_LABELS.counseling} PT</th>
           <th class="num">${SONO_LABELS.counseling} ₹</th>
           <th class="num">Total billed</th><th class="num">Doctor's share</th><th></th>
         </tr></thead>
@@ -276,6 +293,7 @@ function renderSonoMonth() {
         <tfoot><tr>
           <td>Total</td><td class="num">${t.patients}</td>
           ${SONO_COUNT_TYPES.map(k => `<td class="num">${t.counts[k]}</td>`).join('')}
+          <td class="num">${t.counselingPatients}</td>
           <td class="num">${inr(t.counseling)}</td>
           <td class="num">${inr2(t.billed)}</td><td class="num">${inr2(t.doctorShare)}</td><td></td>
         </tr></tfoot>
@@ -298,12 +316,12 @@ function sonoPdfRows(d, fmt) {
     let lines = d.lines.filter(l => l.type === t);
     if (!lines.length) {
       const cur = sono.rates && sono.rates[t];
-      lines = [{ type: t, rate: cur && t !== 'counseling' ? cur.rate : null, qty: 0, doctorShare: 0 }];
+      lines = [{ type: t, rate: cur && t !== 'counseling' ? cur.rate : null, patients: 0, amount: 0, doctorShare: 0 }];
     }
     lines.forEach(l => {
-      if (t === 'foc') rows.push([SONO_PDF_LABELS[t], String(l.qty), '-']);
-      else if (t === 'counseling') rows.push([`${SONO_PDF_LABELS[t]}${l.qty ? ' (' + fmt(l.qty) + ')' : ''}`, '', fmt(l.doctorShare)]);
-      else rows.push([`${SONO_PDF_LABELS[t]}${l.rate != null ? '  @ ' + fmt(l.rate) : ''}`, String(l.qty), fmt(l.doctorShare)]);
+      if (t === 'foc') rows.push([SONO_PDF_LABELS[t], String(l.patients), '-']);
+      else if (t === 'counseling') rows.push([`${SONO_PDF_LABELS[t]}${l.amount ? ' (' + fmt(l.amount) + ')' : ''}`, String(l.patients), fmt(l.doctorShare)]);
+      else rows.push([`${SONO_PDF_LABELS[t]}${l.rate != null ? '  @ ' + fmt(l.rate) : ''}`, String(l.patients), fmt(l.doctorShare)]);
     });
   });
   return rows;
@@ -314,7 +332,9 @@ function downloadSonoPdf() {
   if (!d || !d.entries.length) { toast('No days entered for this month.', 'error'); return; }
   if (typeof jspdf === 'undefined') { toast('PDF library not loaded — check your connection.', 'error'); return; }
   const t = d.totals;
-  const fmt = n => 'Rs. ' + Number(n || 0).toLocaleString('en-IN', { minimumFractionDigits: 0, maximumFractionDigits: 2 });
+  // Whole rupees as-is, otherwise always two paise digits (4,332.90 not 4,332.9).
+  const fmt = n => { n = Number(n || 0); const dp = Number.isInteger(n) ? 0 : 2;
+    return 'Rs. ' + n.toLocaleString('en-IN', { minimumFractionDigits: dp, maximumFractionDigits: 2 }); };
   const doc = newSlipDoc();
   const { M, L, R, INK, RULE, TINT } = slipLetterhead(doc, `Sonography - ${monthName(d.month)}`);
 
@@ -380,7 +400,7 @@ let deletingSonoId = null;
 function deleteSonoEntry(id) {
   const e = sono.data.entries.find(x => x.id === id);
   if (!e) return;
-  const label = `${fmtDate(e.date)} ${e.date.slice(0, 4)} (${e.patients} patients${e.counseling ? ', ' + inr(e.counseling) + ' counseling' : ''})`;
+  const label = `${fmtDate(e.date)} ${e.date.slice(0, 4)} (${e.patients} patients${e.counseling ? ', incl. ' + inr(e.counseling) + ' counseling' : ''})`;
   deletingSonoId = id;
   document.getElementById('sonoDelLabel').textContent = label;
   document.getElementById('sonoDeleteModal').classList.add('open');

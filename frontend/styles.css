@@ -593,8 +593,9 @@ tr.shift2-row td.pcol-id, tr.shift2-row td.pcol-empid, tr.shift2-row td.pcol-emp
 .sono-entry-head { display: flex; align-items: flex-end; justify-content: space-between; gap: 12px; margin-bottom: 16px; }
 .sono-entry-head .form-group { max-width: 220px; flex: 1; }
 .sono-mode { padding-bottom: 10px; }
-.sono-counts { display: grid; grid-template-columns: repeat(6, 1fr); gap: 12px; }
+.sono-counts { display: grid; grid-template-columns: repeat(7, 1fr); gap: 12px; }
 .sono-counts .form-group { margin-bottom: 0; }
+.sono-counts label { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .sono-rate { font-size: 11px; color: var(--ink-3); margin-top: 5px; font-family: var(--num); }
 .sono-preview { display: flex; flex-wrap: wrap; gap: 10px 28px; margin: 18px 0 14px; padding: 14px 16px;
   background: var(--surface2); border-radius: var(--r-sm); }
@@ -623,6 +624,7 @@ tr.shift2-row td.pcol-id, tr.shift2-row td.pcol-empid, tr.shift2-row td.pcol-emp
 .sono-rates-name { font-size: 14px; font-weight: 500; }
 @media (max-width:639px) {
   .sono-counts { grid-template-columns: repeat(3, 1fr); }
+  .sono-counsel-start { grid-column-start: 1; }   /* keep the counseling pair on its own row */
   .sono-stats { grid-template-columns: 1fr 1fr; }
   .sono-month-title { font-size: 17px; }
   .bnav-btn { font-size: 9px; letter-spacing: 0.2px; }
