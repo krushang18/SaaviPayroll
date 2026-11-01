@@ -382,6 +382,7 @@ function downloadMonthPDF(month, wdValues) {
     doc.text('* Night shift total is already included in the day row\'s Final Amount above.', 14, doc.lastAutoTable.finalY + 8);
   }
 
+  stampDownloadDate(doc);
   doc.save(`Payroll_${payroll.month}.pdf`);
 }
 
@@ -503,6 +504,7 @@ function downloadMonthFullPDF(month) {
     doc.text('* Night shift total is already included in the day row\'s Total above.', 14, doc.lastAutoTable.finalY + 8);
   }
 
+  stampDownloadDate(doc);
   doc.save(`Payroll_${payroll.month}_Full.pdf`);
 }
 

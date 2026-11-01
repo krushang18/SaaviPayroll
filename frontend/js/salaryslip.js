@@ -287,6 +287,18 @@ function newSlipDoc() {
   return new jspdf.jsPDF({ format: 'a5' });
 }
 
+// "Downloaded on dd-mm-yyyy" at the bottom right of every page; every PDF calls this just before saving.
+function stampDownloadDate(doc) {
+  const d = new Date();
+  const text = `Downloaded on ${String(d.getDate()).padStart(2, '0')}-${String(d.getMonth() + 1).padStart(2, '0')}-${d.getFullYear()}`;
+  const w = doc.internal.pageSize.getWidth(), h = doc.internal.pageSize.getHeight();
+  for (let i = 1; i <= doc.getNumberOfPages(); i++) {
+    doc.setPage(i);
+    doc.setFont('helvetica', 'normal').setFontSize(7.5).setTextColor(110, 110, 110);
+    doc.text(text, w - 10, h - 6, { align: 'right' });
+  }
+}
+
 function slipLetterhead(doc, title) {
   const M = 10, L = M, R = doc.internal.pageSize.getWidth() - M, W = R - L;
   const INK = [20, 20, 20], RULE = [90, 98, 110], TINT = [225, 232, 245], BLUE = [46, 110, 200];
@@ -391,5 +403,6 @@ function buildSlipDoc(payroll, r, pf) {
   // Filename: EmpName_MonthYear  e.g. Asha_Devi_May2026.pdf
   const monthYear = monthName(payroll.month).replace(/\s+/g, '');
   const safeName = (r.empName || 'Employee').trim().replace(/[^\w]+/g, '_').replace(/^_+|_+$/g, '');
+  stampDownloadDate(doc);
   return { doc, filename: `${safeName}_${monthYear}.pdf` };
 }

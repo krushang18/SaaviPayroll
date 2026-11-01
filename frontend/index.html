@@ -22,6 +22,7 @@
       <button class="dtab" onclick="switchView('history')">History</button>
       <button class="dtab" onclick="switchView('advances')">Advances</button>
       <button class="dtab" onclick="switchView('salaryslip')">Salary Slip</button>
+      <button class="dtab" onclick="switchView('sonography')">Sonography</button>
     </nav>
     <button class="btn btn-primary btn-sm add-btn-header" onclick="openAddModal()">+ Add Employee</button>
   </div>
@@ -191,6 +192,17 @@
     <div id="monthDetailContent"></div>
   </div>
 
+  <!-- SONOGRAPHY (visiting doctor's pay) -->
+  <div class="view" id="view-sonography">
+    <div class="page-top">
+      <div><div class="page-title">Sonography</div><div class="page-sub">Patients per day and the visiting doctor's monthly pay</div></div>
+      <button class="btn btn-outline btn-sm" style="flex-shrink:0;margin-top:4px;" onclick="openSonoRatesModal()">Rates</button>
+    </div>
+    <div id="sonoEntryCard"></div>
+    <div id="sonoMonth"></div>
+    <div id="sonoMonths"></div>
+  </div>
+
   <!-- SALARY SLIP -->
   <div class="view" id="view-salaryslip">
     <div class="page-top">
@@ -218,6 +230,9 @@
   </button>
   <button class="bnav-btn" id="bnav-salaryslip" aria-label="Salary Slip" onclick="switchView('salaryslip')">
     <span class="bnav-icon"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg></span>Slip
+  </button>
+  <button class="bnav-btn" id="bnav-sonography" aria-label="Sonography" onclick="switchView('sonography')">
+    <span class="bnav-icon"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="4" width="20" height="13" rx="2"/><path d="M6 13c1.5-4 3-4 4.5 0s3 4 4.5 0 1.5-2 3-2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg></span>Sono
   </button>
 </nav>
 
@@ -431,6 +446,34 @@
   </div>
 </div>
 
+<!-- SONOGRAPHY RATES MODAL -->
+<div class="overlay" id="sonoRatesModal">
+  <div class="modal" style="max-width:480px;">
+    <div class="modal-pill"></div>
+    <div class="modal-title">Sonography Rates</div>
+    <p style="font-size:13px;color:var(--ink-3);margin:-10px 0 14px;">Charge per patient and the visiting doctor's share. Changes apply to new days only; days already entered keep the rates they were saved with.</p>
+    <div id="sonoRatesForm"></div>
+    <p style="font-size:12px;color:var(--ink-3);margin:2px 0 4px;">FOC patients are only counted. Counseling / Others is a ₹ amount entered on the day form; the doctor gets the % above of it. TDS of 10% is cut from the doctor's monthly share.</p>
+    <div class="modal-footer">
+      <button class="btn btn-outline" onclick="closeSonoRatesModal()">Cancel</button>
+      <button class="btn btn-primary" id="sonoRatesSaveBtn" onclick="saveSonoRates()">Save</button>
+    </div>
+  </div>
+</div>
+
+<!-- SONOGRAPHY DELETE MODAL -->
+<div class="overlay" id="sonoDeleteModal">
+  <div class="modal">
+    <div class="modal-pill"></div>
+    <div class="modal-title" style="color:var(--danger)">Delete Sonography Entry</div>
+    <p style="font-size:14px;color:var(--ink-2);margin-bottom:8px;">Delete the entry for <strong id="sonoDelLabel" style="color:var(--ink)"></strong>?</p>
+    <div class="modal-footer">
+      <button class="btn btn-outline" onclick="closeSonoDeleteModal()">Cancel</button>
+      <button class="btn btn-danger-out" id="sonoDelBtn" onclick="confirmSonoDelete()">Delete</button>
+    </div>
+  </div>
+</div>
+
 <div class="overlay" id="settingsModal">
   <div class="modal" style="max-width:400px;">
     <div class="modal-pill"></div>
@@ -476,6 +519,7 @@
 <script src="js/history.js"></script>
 <script src="js/logo.js"></script>
 <script src="js/salaryslip.js"></script>
+<script src="js/sonography.js"></script>
 <script src="js/app.js"></script>
 </body>
 </html>

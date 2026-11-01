@@ -1,5 +1,5 @@
 from contextlib import asynccontextmanager
-from datetime import datetime, date, timezone
+from datetime import datetime, date, timedelta, timezone
 from typing import Optional, List, Dict
 import math, os, re
 
@@ -7,7 +7,7 @@ from fastapi import FastAPI, HTTPException, Depends, Path
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field, field_validator, model_validator
 
-from sqlalchemy import create_engine, Column, String, Float, Integer, Index, text, func, and_
+from sqlalchemy import create_engine, Column, String, Float, Integer, Index, DateTime, JSON, text, func, and_
 from sqlalchemy.orm import declarative_base, sessionmaker, Session
 
 # ── Database ──────────────────────────────────────────────────────────────────
@@ -181,6 +181,28 @@ class AppSettingsRow(Base):
     home_visit_rate = Column(Float, default=0)
 
 
+# ── Sonography (visiting doctor's pay) ────────────────────────────────────────
+# Not linked to payroll. One row per date with the patient count per type plus any
+# counseling amount; each row keeps the rates it was saved with, so later rate changes
+# never touch past days. `rates` is {type: {"rate": ₹ per patient, "pct": doctor's %}}
+# for SONO_PATIENT_TYPES, plus {"counseling": {"pct": doctor's %}}.
+class SonoSettingsRow(Base):
+    __tablename__ = "sono_settings"
+    id    = Column(Integer, primary_key=True, default=1)
+    rates = Column(JSON, nullable=False)
+
+
+class SonoEntryRow(Base):
+    __tablename__ = "sono_entries"
+    id         = Column(Integer, primary_key=True, autoincrement=True)
+    date       = Column(String, nullable=False, unique=True, index=True)   # "YYYY-MM-DD"
+    counts     = Column(JSON, nullable=False)    # {type: patients} for SONO_COUNT_TYPES
+    counseling = Column(Integer, nullable=False, default=0)   # counseling / others, whole ₹
+    rates      = Column(JSON, nullable=False)    # snapshot of sono_settings.rates when created
+    created_at = Column(DateTime(timezone=True), nullable=False)
+    updated_at = Column(DateTime(timezone=True), nullable=False)
+
+
 # ── Lifespan ──────────────────────────────────────────────────────────────────
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -246,6 +268,7 @@ async def lifespan(app: FastAPI):
             "ALTER TABLE advances ADD COLUMN IF NOT EXISTS return_months INTEGER DEFAULT NULL",
             "ALTER TABLE cash_advances ADD COLUMN IF NOT EXISTS monthly_return REAL DEFAULT NULL",
             "ALTER TABLE cash_advances ADD COLUMN IF NOT EXISTS return_months INTEGER DEFAULT NULL",
+            "ALTER TABLE sono_entries ADD COLUMN IF NOT EXISTS counseling INTEGER NOT NULL DEFAULT 0",
         ]:
             try:
                 conn.execute(text(sql))
@@ -1594,3 +1617,259 @@ def delete_payroll(month: str = Path(pattern=r"^\d{4}-\d{2}$"), pay_type: str = 
     db.delete(p)
     db.commit()
     return {"deleted": month}
+
+
+# ── Sonography ───────────────────────────────────────────────────────────────
+# Patient types are paid rate × patients; FOC patients are only counted (no rate, no
+# pay). Counseling / others is a ₹ amount entered now and then, and the doctor gets
+# their % of it. Amounts are kept to the paisa: the maths runs in whole paise so the
+# frontend (computeSonoRow in sonography.js) gets the exact same numbers.
+SONO_PATIENT_TYPES = ("nt_ano", "gs", "nt_twins", "gs_twins")
+SONO_COUNT_TYPES = SONO_PATIENT_TYPES + ("foc",)
+SONO_TYPE_LABELS = {"nt_ano": "NT & ANO", "gs": "G.S", "nt_twins": "NT Twins", "gs_twins": "G.S Twins",
+                    "foc": "FOC", "counseling": "Counseling / Others"}
+SONO_TDS_PCT = 10
+SONO_MAX_RATE = 100000
+SONO_MAX_COUNT = 999
+SONO_MAX_COUNSELING = 1000000   # ₹ per entry
+IST = timezone(timedelta(hours=5, minutes=30))
+
+
+def _utcnow() -> datetime:
+    return datetime.now(timezone.utc)
+
+
+def _two_dp(v: float, field: str) -> float:
+    if abs(v * 100 - round(v * 100)) > 1e-6:
+        raise ValueError(f"{field} can have at most 2 decimal places")
+    return round(v, 2)
+
+
+def _half_up_div(n: int, d: int) -> int:
+    """n / d rounded half up, for n >= 0."""
+    return (2 * n + d) // (2 * d)
+
+
+def _sono_line_paise(base_paise: int, pct: float) -> int:
+    """Doctor's share of one line, rounded half up to the paisa."""
+    return _half_up_div(base_paise * round(pct * 100), 10000)
+
+
+def _sono_parts_paise(e: SonoEntryRow) -> list:
+    """[(type, rate, pct, patients or ₹ amount, billed, doctor's share)] for one day, in paise."""
+    parts = []
+    for t in SONO_PATIENT_TYPES:
+        n = e.counts.get(t, 0)
+        billed = n * round(e.rates[t]["rate"] * 100)
+        parts.append((t, e.rates[t]["rate"], e.rates[t]["pct"], n, billed, _sono_line_paise(billed, e.rates[t]["pct"])))
+    pct = e.rates["counseling"]["pct"]
+    parts.append(("counseling", None, pct, e.counseling, e.counseling * 100, _sono_line_paise(e.counseling * 100, pct)))
+    return parts
+
+
+def _sono_row_paise(e: SonoEntryRow) -> tuple:
+    """(billed, doctor's share) in paise for one day."""
+    parts = _sono_parts_paise(e)
+    return sum(p[4] for p in parts), sum(p[5] for p in parts)
+
+
+def _sono_patients(counts: dict) -> int:
+    return sum(counts.get(t, 0) for t in SONO_COUNT_TYPES)
+
+
+def _sono_totals(entries) -> dict:
+    billed = doctor = 0
+    counts = {t: 0 for t in SONO_COUNT_TYPES}
+    for e in entries:
+        b, d = _sono_row_paise(e)
+        billed += b
+        doctor += d
+        for t in SONO_COUNT_TYPES:
+            counts[t] += e.counts.get(t, 0)
+    tds = _half_up_div(doctor * SONO_TDS_PCT, 100)
+    return {"days": len(entries), "counts": counts, "patients": sum(counts.values()),
+            "counseling": sum(e.counseling for e in entries),
+            "billed": billed / 100, "doctorShare": doctor / 100, "tds": tds / 100,
+            "netPay": (doctor - tds) / 100, "hospitalShare": (billed - doctor) / 100}
+
+
+def _sono_lines(entries) -> list:
+    """Month breakdown per type, split by rate when rates changed during the month:
+    [{type, rate, pct, qty (patients, or ₹ for counseling), doctorShare}]. The doctor's
+    shares add up exactly to the month's doctorShare."""
+    groups = {}
+    for e in entries:
+        for t, rate, pct, qty, _, doctor in _sono_parts_paise(e):
+            if qty:
+                g = groups.setdefault((t, rate, pct), [0, 0])
+                g[0] += qty
+                g[1] += doctor
+        if e.counts.get("foc", 0):
+            groups.setdefault(("foc", None, None), [0, 0])[0] += e.counts["foc"]
+    order = SONO_PATIENT_TYPES + ("foc", "counseling")
+    return [{"type": t, "rate": rate, "pct": pct, "qty": qty, "doctorShare": doctor / 100}
+            for (t, rate, pct), (qty, doctor) in sorted(groups.items(), key=lambda kv: order.index(kv[0][0]))]
+
+
+def _sono_entry_dict(row: SonoEntryRow) -> dict:
+    billed, doctor = _sono_row_paise(row)
+    return {"id": row.id, "date": row.date, "counts": row.counts, "counseling": row.counseling, "rates": row.rates,
+            "patients": _sono_patients(row.counts), "billed": billed / 100, "doctorShare": doctor / 100}
+
+
+def _sono_today() -> str:
+    return datetime.now(IST).date().isoformat()
+
+
+class SonoRateIn(BaseModel):
+    rate: float = Field(ge=0, le=SONO_MAX_RATE)
+    pct: float  = Field(ge=0, le=100)
+
+    @field_validator('rate')
+    @classmethod
+    def _rate_dp(cls, v):
+        return _two_dp(v, "rate")
+
+    @field_validator('pct')
+    @classmethod
+    def _pct_dp(cls, v):
+        return _two_dp(v, "doctor %")
+
+
+class SonoSettingsIn(BaseModel):
+    rates: Dict[str, SonoRateIn]
+    counselingPct: float = Field(ge=0, le=100)
+
+    @field_validator('rates')
+    @classmethod
+    def _all_types(cls, v):
+        if set(v) != set(SONO_PATIENT_TYPES):
+            raise ValueError(f"rates must have exactly: {', '.join(SONO_PATIENT_TYPES)}")
+        return v
+
+    @field_validator('counselingPct')
+    @classmethod
+    def _pct_dp(cls, v):
+        return _two_dp(v, "counseling doctor %")
+
+
+class SonoEntryIn(BaseModel):
+    date: str = Field(min_length=1)    # "YYYY-MM-DD"
+    counts: Dict[str, int]
+    counseling: int = Field(default=0, ge=0, le=SONO_MAX_COUNSELING)   # whole ₹
+
+    @field_validator('date')
+    @classmethod
+    def _valid_date(cls, v):
+        date.fromisoformat(v)
+        if not re.fullmatch(r"\d{4}-\d{2}-\d{2}", v):
+            raise ValueError("date must be YYYY-MM-DD")
+        return v
+
+    @field_validator('counts')
+    @classmethod
+    def _valid_counts(cls, v):
+        if set(v) != set(SONO_COUNT_TYPES):
+            raise ValueError(f"counts must have exactly: {', '.join(SONO_COUNT_TYPES)}")
+        for t, n in v.items():
+            if n < 0 or n > SONO_MAX_COUNT:
+                raise ValueError(f"{SONO_TYPE_LABELS[t]} must be between 0 and {SONO_MAX_COUNT}")
+        return v
+
+    @model_validator(mode='after')
+    def _not_empty(self):
+        if not any(self.counts.values()) and not self.counseling:
+            raise ValueError("Enter at least one patient or a counseling amount")
+        return self
+
+
+def _sono_settings(db: Session) -> Optional[dict]:
+    row = db.query(SonoSettingsRow).filter(SonoSettingsRow.id == 1).first()
+    return row.rates if row else None
+
+
+@app.get("/sonography/settings")
+def get_sono_settings(db: Session = Depends(get_db)):
+    return {"rates": _sono_settings(db), "tdsPct": SONO_TDS_PCT}
+
+
+@app.put("/sonography/settings")
+def update_sono_settings(s: SonoSettingsIn, db: Session = Depends(get_db)):
+    rates = {t: s.rates[t].model_dump() for t in SONO_PATIENT_TYPES}
+    rates["counseling"] = {"pct": s.counselingPct}
+    row = db.query(SonoSettingsRow).filter(SonoSettingsRow.id == 1).first()
+    if row:
+        row.rates = rates
+    else:
+        db.add(SonoSettingsRow(id=1, rates=rates))
+    db.commit()
+    return {"rates": rates, "tdsPct": SONO_TDS_PCT}
+
+
+@app.get("/sonography/entries")
+def list_sono_entries(month: str, db: Session = Depends(get_db)):
+    if not re.fullmatch(r"\d{4}-(0[1-9]|1[0-2])", month):
+        raise HTTPException(422, detail="month must be in 'YYYY-MM' format")
+    rows = (db.query(SonoEntryRow).filter(SonoEntryRow.date.like(month + "-%"))
+              .order_by(SonoEntryRow.date).all())
+    last_day = (date(int(month[:4]) + int(month[5:]) // 12, int(month[5:]) % 12 + 1, 1) - timedelta(days=1)).isoformat()
+    return {"month": month, "fromDate": month + "-01", "toDate": last_day,
+            "complete": _sono_today() > last_day, "tdsPct": SONO_TDS_PCT,
+            "entries": [_sono_entry_dict(r) for r in rows], "totals": _sono_totals(rows), "lines": _sono_lines(rows)}
+
+
+@app.get("/sonography/months")
+def list_sono_months(db: Session = Depends(get_db)):
+    by_month = {}
+    for r in db.query(SonoEntryRow).all():
+        by_month.setdefault(r.date[:7], []).append(r)
+    this_month = _sono_today()[:7]
+    return [{"month": m, "complete": m < this_month, **_sono_totals(rows)}
+            for m, rows in sorted(by_month.items(), reverse=True)]
+
+
+def _check_sono_date(d: str):
+    if d > _sono_today():
+        raise HTTPException(400, detail="Date cannot be in the future.")
+
+
+@app.post("/sonography/entries", status_code=201)
+def create_sono_entry(e: SonoEntryIn, db: Session = Depends(get_db)):
+    _check_sono_date(e.date)
+    rates = _sono_settings(db)
+    if not rates:
+        raise HTTPException(400, detail="Set the sonography rates first.")
+    if db.query(SonoEntryRow).filter(SonoEntryRow.date == e.date).first():
+        raise HTTPException(409, detail=f"{e.date} already has an entry. Edit that one instead.")
+    now = _utcnow()
+    row = SonoEntryRow(date=e.date, counts=e.counts, counseling=e.counseling, rates=rates, created_at=now, updated_at=now)
+    db.add(row)
+    db.commit()
+    db.refresh(row)
+    return _sono_entry_dict(row)
+
+
+@app.put("/sonography/entries/{entry_id}")
+def update_sono_entry(entry_id: int, e: SonoEntryIn, db: Session = Depends(get_db)):
+    row = db.query(SonoEntryRow).filter(SonoEntryRow.id == entry_id).first()
+    if not row:
+        raise HTTPException(404, detail="Sonography entry not found")
+    # The date identifies the day; to move counts to another day, delete and re-enter.
+    if e.date != row.date:
+        raise HTTPException(400, detail="The date of an entry cannot be changed.")
+    row.counts = e.counts         # rates stay as saved on the row
+    row.counseling = e.counseling
+    row.updated_at = _utcnow()
+    db.commit()
+    db.refresh(row)
+    return _sono_entry_dict(row)
+
+
+@app.delete("/sonography/entries/{entry_id}")
+def delete_sono_entry(entry_id: int, db: Session = Depends(get_db)):
+    row = db.query(SonoEntryRow).filter(SonoEntryRow.id == entry_id).first()
+    if not row:
+        raise HTTPException(404, detail="Sonography entry not found")
+    db.delete(row)
+    db.commit()
+    return {"deleted": entry_id}

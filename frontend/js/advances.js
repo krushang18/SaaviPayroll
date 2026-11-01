@@ -89,6 +89,7 @@ function downloadAdvanceBalancesPDF() {
     }
   });
 
+  stampDownloadDate(doc);
   doc.save(`Advance_Balances_${state.payType}_${today}.pdf`);
 }
 
@@ -443,6 +444,7 @@ function buildAdvanceSlipDoc(emp, adv, fig) {
 
   // Filename: Advance_EmpName_Date  e.g. Advance_Asha_Devi_26-04-2026.pdf
   const safeName = (emp.name || 'Employee').trim().replace(/[^\w]+/g, '_').replace(/^_+|_+$/g, '');
+  stampDownloadDate(doc);
   return { doc, filename: `Advance_${safeName}_${slipFullDate(adv.date)}.pdf` };
 }
 
